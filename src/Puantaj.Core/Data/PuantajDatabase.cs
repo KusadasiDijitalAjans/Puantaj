@@ -369,6 +369,39 @@ public sealed class PuantajDatabase
         transaction.Commit();
     }
 
+    public void CopyWeekAssignments(long sourceEmployeeId, long targetEmployeeId, DateOnly from, DateOnly to)
+    {
+        if (sourceEmployeeId == targetEmployeeId) throw new ArgumentException("Kaynak ve hedef personel farklı olmalıdır.");
+        if (to < from) throw new ArgumentOutOfRangeException(nameof(to));
+        foreach (var value in DatesByMonth(from, to)) EnsureMonthUnlocked(value.Year, value.Month);
+        using var connection = Open(); using var transaction = connection.BeginTransaction();
+        foreach (var (id, role) in new[] { (sourceEmployeeId, "Kaynak"), (targetEmployeeId, "Hedef") })
+        {
+            using var employee = connection.CreateCommand(); employee.Transaction = transaction;
+            employee.CommandText = "SELECT IsActive FROM Employees WHERE Id=$id;"; employee.Parameters.AddWithValue("$id", id);
+            var active = employee.ExecuteScalar();
+            if (active is null || Convert.ToInt32(active, CultureInfo.InvariantCulture) == 0)
+                throw new InvalidOperationException($"{role} personel aktif değil veya artık mevcut değil.");
+        }
+        using (var source = connection.CreateCommand())
+        {
+            source.Transaction = transaction;
+            source.CommandText = "SELECT COUNT(*) FROM Assignments WHERE EmployeeId=$employee AND WorkDate >= $from AND WorkDate <= $to;";
+            source.Parameters.AddWithValue("$employee", sourceEmployeeId); source.Parameters.AddWithValue("$from", FormatDate(from)); source.Parameters.AddWithValue("$to", FormatDate(to));
+            if (Convert.ToInt32(source.ExecuteScalar(), CultureInfo.InvariantCulture) == 0)
+                throw new InvalidOperationException("Kaynak haftada kopyalanacak puantaj kaydı bulunamadı.");
+        }
+        Execute(connection, "DELETE FROM Assignments WHERE EmployeeId=$employee AND WorkDate >= $from AND WorkDate <= $to;", transaction,
+            ("$employee", targetEmployeeId), ("$from", FormatDate(from)), ("$to", FormatDate(to)));
+        Execute(connection, """
+            INSERT INTO Assignments (EmployeeId,WorkDate,Code,UpdatedAt)
+            SELECT $target,WorkDate,Code,$updated FROM Assignments
+            WHERE EmployeeId=$source AND WorkDate >= $from AND WorkDate <= $to;
+            """, transaction, ("$target", targetEmployeeId), ("$source", sourceEmployeeId),
+            ("$from", FormatDate(from)), ("$to", FormatDate(to)), ("$updated", DateTimeOffset.UtcNow.ToString("O")));
+        transaction.Commit();
+    }
+
     public void ClearWeekAssignments(long employeeId, DateOnly from, DateOnly to)
     {
         if (to < from) throw new ArgumentOutOfRangeException(nameof(to));
