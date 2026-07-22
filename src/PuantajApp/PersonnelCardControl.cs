@@ -310,7 +310,7 @@ internal sealed class PersonnelCardControl : UserControl
         if (existing.Count == 0) return;
         _editing = true; _dirty = false; ClearMatrix(); SetMatrixEnabledDays(week); LoadExistingSelections(existing);
         SetMatrixLocked(false);
-        _clearButton.Enabled = true; _defaultShift.Enabled = true;
+        ApplyPlanningUiState(hasSavedWeek: true, monthLocked: false);
         _generateButton.Text = "✓  Değişiklikleri Kaydet";
     }
 
