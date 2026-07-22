@@ -195,7 +195,7 @@ public sealed class PuantajDatabase
     {
         using var connection = Open();
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT Code, StartTime, EndTime, IsWorkShift, DisplayOrder FROM Shifts ORDER BY DisplayOrder;";
+        command.CommandText = "SELECT Code, StartTime, EndTime, IsWorkShift, DisplayOrder FROM Shifts ORDER BY IsWorkShift DESC, Code COLLATE NOCASE;";
         using var reader = command.ExecuteReader();
         var shifts = new List<Shift>();
         while (reader.Read())
@@ -210,7 +210,7 @@ public sealed class PuantajDatabase
     {
         using var connection = Open();
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT Code, Description, StartTime, EndTime, IsWorkShift, DisplayOrder FROM Shifts ORDER BY DisplayOrder;";
+        command.CommandText = "SELECT Code, Description, StartTime, EndTime, IsWorkShift, DisplayOrder FROM Shifts ORDER BY IsWorkShift DESC, Code COLLATE NOCASE;";
         using var reader = command.ExecuteReader();
         var result = new List<AssignmentCodeDefinition>();
         while (reader.Read()) result.Add(new(reader.GetString(0), reader.GetString(1), ParseTime(reader, 2), ParseTime(reader, 3), reader.GetBoolean(4), reader.GetInt32(5)));

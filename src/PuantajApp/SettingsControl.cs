@@ -12,10 +12,12 @@ internal sealed class SettingsControl : UserControl
     private readonly CheckBox _printLogo = new() { Text = "Çıktılarda logoyu kullan", AutoSize = true };
     private readonly CheckBox _center = new() { Text = "Sayfayı yatay ortala", AutoSize = true };
     private readonly PictureBox _logoPreview = new() { Width = 180, Height = 80, SizeMode = PictureBoxSizeMode.Zoom, BorderStyle = BorderStyle.FixedSingle };
+    private readonly ShiftSettingsControl _codeSettings;
 
     public SettingsControl(PuantajDatabase database)
     {
         _database = database;
+        _codeSettings = new ShiftSettingsControl(database) { Width = 700, Height = 260 };
         var table = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(18), ColumnCount = 3 };
         table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 190));
         table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 360));
@@ -29,8 +31,7 @@ internal sealed class SettingsControl : UserControl
         AddControl(table, "Sağ kenar (cm)", _right); AddControl(table, "Üst kenar (cm)", _top); AddControl(table, "Alt kenar (cm)", _bottom);
         AddControl(table, "Seçenekler", new FlowLayoutPanel { AutoSize = true, Controls = { _printLogo, _center } });
         AddSection(table, "VARDİYA VE KOD TANIMLARI");
-        var codeSettings = new ShiftSettingsControl(database) { Width = 700, Height = 260 };
-        table.Controls.Add(codeSettings, 0, table.RowCount); table.SetColumnSpan(codeSettings, 3); table.RowCount++;
+        table.Controls.Add(_codeSettings, 0, table.RowCount); table.SetColumnSpan(_codeSettings, 3); table.RowCount++;
         var save = new Button { Text = "Ayarları Kaydet", AutoSize = true }; save.Click += (_, _) => Save();
         var backup = new Button { Text = "Yedek Al", AutoSize = true }; backup.Click += (_, _) => Backup();
         var restore = new Button { Text = "Geri Yükle", AutoSize = true }; restore.Click += (_, _) => Restore();
@@ -57,6 +58,7 @@ internal sealed class SettingsControl : UserControl
     {
         try
         {
+            _codeSettings.SaveChanges(false);
             _database.SaveSettings(new AppSettings(Get("HotelName"), Get("DepartmentName"), Get("LogoPath"), Get("DepartmentManager"),
                 Get("DepartmentManagerTitle"), Get("HumanResourcesManager"), Get("HumanResourcesTitle"), Get("GeneralManager"),
                 Get("GeneralManagerTitle"), _logoSize.Value, _left.Value, _right.Value, _top.Value, _bottom.Value, _printLogo.Checked, _center.Checked));

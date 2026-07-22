@@ -17,7 +17,7 @@ internal sealed class ShiftSettingsControl : UserControl
         _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Start", HeaderText = "Başlangıç (SS:DD)", Width = 150 });
         _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "End", HeaderText = "Bitiş (SS:DD)", Width = 150 });
         var save = new Button { Text = "Vardiya Saatlerini Kaydet", AutoSize = true, Dock = DockStyle.Top };
-        save.Click += (_, _) => Save();
+        save.Click += (_, _) => SaveChanges();
         Controls.Add(_grid);
         Controls.Add(save);
         Reload();
@@ -30,10 +30,11 @@ internal sealed class ShiftSettingsControl : UserControl
             _grid.Rows.Add(shift.Code, shift.Description, shift.IsWorkShift, Format(shift.StartTime), Format(shift.EndTime));
     }
 
-    private void Save()
+    public void SaveChanges(bool showConfirmation = true)
     {
         try
         {
+            _grid.EndEdit();
             foreach (DataGridViewRow row in _grid.Rows)
             {
                 var code = row.Cells["Code"].Value?.ToString() ?? string.Empty;
@@ -43,12 +44,13 @@ internal sealed class ShiftSettingsControl : UserControl
                 TimeSpan? end = work ? Parse(row.Cells["End"].Value?.ToString()) : null;
                 _database.SaveAssignmentCode(code, row.Cells["Description"].Value?.ToString() ?? string.Empty, start, end, work);
             }
-            MessageBox.Show("Vardiya saatleri kaydedildi.", "Puantaj", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            if (showConfirmation) MessageBox.Show("Vardiya saatleri kaydedildi.", "Puantaj", MessageBoxButtons.OK, MessageBoxIcon.Information);
             Reload();
         }
         catch (Exception exception)
         {
-            MessageBox.Show(exception.Message, "Kayıt hatası", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            if (showConfirmation) MessageBox.Show(exception.Message, "Kayıt hatası", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            else throw;
         }
     }
 

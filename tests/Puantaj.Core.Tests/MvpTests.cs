@@ -68,6 +68,19 @@ public sealed class MvpTests : IDisposable
         Assert.Equal("Z9", Assert.Single(database.GetAssignments(date, date)).Code);
     }
 
+    [Fact]
+    public void AssignmentCodesListWorkShiftsAlphabeticallyBeforeLeaveTypes()
+    {
+        var database = CreateDatabase();
+        database.SaveAssignmentCode("F", "Vardiya F", TimeSpan.FromHours(7), TimeSpan.FromHours(15), true);
+
+        var definitions = database.GetAssignmentCodes();
+        var workCodes = definitions.Where(item => item.IsWorkShift).Select(item => item.Code).ToList();
+        Assert.Equal(workCodes.OrderBy(item => item, StringComparer.OrdinalIgnoreCase), workCodes);
+        Assert.True(definitions.Take(workCodes.Count).All(item => item.IsWorkShift));
+        Assert.True(definitions.Skip(workCodes.Count).All(item => !item.IsWorkShift));
+    }
+
     private PuantajDatabase CreateDatabase()
     {
         var database = new PuantajDatabase(_databasePath);
