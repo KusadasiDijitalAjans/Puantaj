@@ -1,3 +1,4 @@
+using Microsoft.Data.Sqlite;
 using Puantaj.Core.Calendar;
 using Puantaj.Core.Data;
 
@@ -76,6 +77,7 @@ public sealed class MvpTests : IDisposable
 
     public void Dispose()
     {
+        SqliteConnection.ClearAllPools();
         if (File.Exists(_databasePath)) File.Delete(_databasePath);
         if (File.Exists(_databasePath + "-wal")) File.Delete(_databasePath + "-wal");
         if (File.Exists(_databasePath + "-shm")) File.Delete(_databasePath + "-shm");
