@@ -8,7 +8,6 @@ namespace Puantaj.Core.Excel;
 public sealed class MonthlyExcelExporter
 {
     private const int FirstEmployeeRow = 7;
-    private const int LastEmployeeRow = 38;
     private const int FirstDayColumn = 5; // E
 
     public string Export(
@@ -24,15 +23,47 @@ public sealed class MonthlyExcelExporter
         AppSettings? settings = null)
     {
         if (!File.Exists(templatePath)) throw new FileNotFoundException("Aylık puantaj şablonu bulunamadı.", templatePath);
-        if (employees.Count > LastEmployeeRow - FirstEmployeeRow + 1)
-            throw new InvalidOperationException("Aylık şablon en fazla 32 personel destekliyor.");
-
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(outputPath))!);
         using var workbook = new XLWorkbook(templatePath);
-        var sheet = workbook.Worksheets.Single();
+        var templateSheet = workbook.Worksheets.Single();
+        var capacity = CalculateEmployeesPerSheet(templateSheet);
+        var pageCount = Math.Max(1, (int)Math.Ceiling((double)employees.Count / capacity));
+        var sheets = new List<IXLWorksheet> { templateSheet };
+        for (var page = 2; page <= pageCount; page++) sheets.Add(templateSheet.CopyTo($"Puantaj {page}"));
         var culture = CultureInfo.GetCultureInfo("tr-TR");
         var monthName = culture.DateTimeFormat.GetMonthName(month).ToUpper(culture);
-        sheet.Name = $"{monthName} {year} PUANTAJ";
+        for (var page = 0; page < pageCount; page++)
+        {
+            var pageEmployees = employees.Skip(page * capacity).Take(capacity).ToArray();
+            FillSheet(sheets[page], pageEmployees, assignments, definitions, settings, hotelName, departmentName,
+                year, month, monthName, page * capacity, capacity);
+            sheets[page].Name = pageCount == 1 ? $"{monthName} {year} PUANTAJ" : $"Puantaj {page + 1}";
+        }
+        workbook.SaveAs(outputPath, new SaveOptions
+        {
+            GenerateCalculationChain = false,
+            ConsolidateConditionalFormatRanges = false,
+            ConsolidateDataValidationRanges = false
+        });
+        ExcelPageSetup.EnsureSavedA4(outputPath);
+        return outputPath;
+    }
+
+    public static int CalculateEmployeesPerSheet(IXLWorksheet sheet)
+    {
+        var summaryRow = sheet.Column(4).CellsUsed().FirstOrDefault(cell =>
+            cell.GetString().StartsWith("X-ÇALIŞAN", StringComparison.CurrentCultureIgnoreCase))?.Address.RowNumber
+            ?? throw new InvalidOperationException("Aylık şablonda günlük toplam bölümü bulunamadı.");
+        var totalsRow = summaryRow - 1;
+        return totalsRow - FirstEmployeeRow - 1;
+    }
+
+    private static void FillSheet(IXLWorksheet sheet, IReadOnlyList<Employee> employees,
+        IReadOnlyList<Assignment> assignments, IReadOnlyList<AssignmentCodeDefinition>? definitions,
+        AppSettings? settings, string hotelName, string departmentName, int year, int month,
+        string monthName, int employeeOffset, int capacity)
+    {
+        var lastEmployeeRow = FirstEmployeeRow + capacity - 1;
         sheet.Cell("E5").Value = $"{monthName}   {year}   PUANTAJ";
         sheet.Cell("AP2").Value = departmentName;
         sheet.Cell("AP3").Value = hotelName;
@@ -43,11 +74,13 @@ public sealed class MonthlyExcelExporter
             var column = FirstDayColumn + day - 1;
             if (day <= days) sheet.Cell(6, column).Value = day;
             else sheet.Cell(6, column).Clear(XLClearOptions.Contents);
-            for (var row = FirstEmployeeRow; row <= LastEmployeeRow; row++)
-                sheet.Cell(row, column).Clear(XLClearOptions.Contents);
+            for (var row = FirstEmployeeRow; row <= lastEmployeeRow; row++)
+            {
+                var cell = sheet.Cell(row, column); cell.Clear(XLClearOptions.Contents); ClearAttendanceColor(cell);
+            }
         }
 
-        for (var row = FirstEmployeeRow; row <= LastEmployeeRow; row++)
+        for (var row = FirstEmployeeRow; row <= lastEmployeeRow; row++)
         {
             sheet.Cell(row, 2).Clear(XLClearOptions.Contents);
             sheet.Cell(row, 3).Clear(XLClearOptions.Contents);
@@ -61,7 +94,7 @@ public sealed class MonthlyExcelExporter
             var row = FirstEmployeeRow + index;
             var employee = employees[index];
             employeeRows[employee.Id] = row;
-            sheet.Cell(row, 2).Value = index + 1;
+            sheet.Cell(row, 2).Value = employeeOffset + index + 1;
             sheet.Cell(row, 3).Value = employee.FullName;
             sheet.Cell(row, 4).Value = employee.Position;
             WriteEmployeeFormulas(sheet, row);
@@ -76,26 +109,37 @@ public sealed class MonthlyExcelExporter
         {
             if (assignment.WorkDate.Year != year || assignment.WorkDate.Month != month ||
                 !employeeRows.TryGetValue(assignment.EmployeeId, out var row)) continue;
-            if (ended.TryGetValue(assignment.EmployeeId, out var endDate) && assignment.WorkDate >= endDate) continue;
+            if (ended.TryGetValue(assignment.EmployeeId, out var endDate) && assignment.WorkDate > endDate) continue;
             var cell = sheet.Cell(row, FirstDayColumn + assignment.WorkDate.Day - 1);
-            var value = mapper.Map(assignment.Code); cell.Value = value;
-            if (value == "HT") cell.Style.Fill.BackgroundColor = XLColor.Yellow;
+            var definition = resolver.Resolve(assignment.Code); var value = mapper.Map(assignment.Code); cell.Value = value;
+            ApplyAttendanceColor(cell, definition);
         }
         foreach (var pair in ended.Where(pair => pair.Value.Year == year && pair.Value.Month == month && employeeRows.ContainsKey(pair.Key)))
-            for (var day = pair.Value.Day; day <= days; day++) Blackout(sheet.Cell(employeeRows[pair.Key], FirstDayColumn + day - 1));
+            for (var day = pair.Value.Day + 1; day <= days; day++) Blackout(sheet.Cell(employeeRows[pair.Key], FirstDayColumn + day - 1));
 
         WriteSummaryHeaders(sheet);
         WriteDailySummaryFormulas(sheet, days);
         ExcelBranding.ApplyMonthly(sheet, settings);
         ExcelPageSetup.ApplyA4(sheet, "B2:AT53", XLPageOrientation.Landscape);
-        workbook.SaveAs(outputPath, new SaveOptions
+    }
+
+    private static void ClearAttendanceColor(IXLCell cell)
+    {
+        cell.Style.Fill.PatternType = XLFillPatternValues.None;
+        cell.Style.Fill.BackgroundColor = XLColor.NoColor;
+        cell.Style.Font.FontColor = XLColor.Black;
+    }
+
+    private static void ApplyAttendanceColor(IXLCell cell, AssignmentCodeDefinition definition)
+    {
+        ClearAttendanceColor(cell);
+        if (!definition.IsWorkShift && !definition.IsEmploymentEnded &&
+            !definition.Code.Equals("HT", StringComparison.OrdinalIgnoreCase) &&
+            !definition.Code.Equals("RT", StringComparison.OrdinalIgnoreCase))
         {
-            GenerateCalculationChain = false,
-            ConsolidateConditionalFormatRanges = false,
-            ConsolidateDataValidationRanges = false
-        });
-        ExcelPageSetup.EnsureSavedA4(outputPath);
-        return outputPath;
+            cell.Style.Fill.PatternType = XLFillPatternValues.Solid;
+            cell.Style.Fill.BackgroundColor = XLColor.Yellow;
+        }
     }
 
     private static void Blackout(IXLCell cell)
@@ -104,6 +148,7 @@ public sealed class MonthlyExcelExporter
         cell.Style.Fill.PatternType = XLFillPatternValues.Solid;
         cell.Style.Fill.BackgroundColor = XLColor.Black;
         cell.Style.Fill.PatternColor = XLColor.Black;
+        cell.Style.Font.FontColor = XLColor.White;
     }
 
     private static IReadOnlyList<AssignmentCodeDefinition> LegacyDefinitions() => AttendanceCodes.All
