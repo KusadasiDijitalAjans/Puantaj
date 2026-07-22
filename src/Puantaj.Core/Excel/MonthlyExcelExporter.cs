@@ -109,7 +109,7 @@ public sealed class MonthlyExcelExporter
         {
             if (assignment.WorkDate.Year != year || assignment.WorkDate.Month != month ||
                 !employeeRows.TryGetValue(assignment.EmployeeId, out var row)) continue;
-            if (ended.TryGetValue(assignment.EmployeeId, out var endDate) && assignment.WorkDate > endDate) continue;
+            if (ended.TryGetValue(assignment.EmployeeId, out var endDate) && assignment.WorkDate >= endDate) continue;
             var cell = sheet.Cell(row, FirstDayColumn + assignment.WorkDate.Day - 1);
             var definition = resolver.Resolve(assignment.Code); var value = mapper.Map(assignment.Code); cell.Value = value;
             ApplyAttendanceColor(cell, definition);
