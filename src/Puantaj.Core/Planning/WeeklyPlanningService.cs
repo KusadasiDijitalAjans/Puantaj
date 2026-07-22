@@ -57,6 +57,24 @@ public sealed class WeeklyPlanningService
         return result;
     }
 
+    public IReadOnlyList<MonthWeek> GetCopyTargets(IReadOnlyList<MonthWeek> weeks, MonthWeek source) =>
+        weeks.Where(item => item.Number != source.Number).ToArray();
+
+    public IReadOnlyDictionary<DateOnly, string> ExpandEmploymentEndedToMonthEnd(
+        IReadOnlyDictionary<DateOnly, string> assignments,
+        IReadOnlyList<AssignmentCodeDefinition> definitions)
+    {
+        var result = assignments.ToDictionary(item => item.Key, item => item.Value);
+        var resolver = new AssignmentCodeResolver(definitions);
+        var ended = result.Where(item => resolver.Resolve(item.Value).IsEmploymentEnded)
+            .Select(item => item.Key).OrderBy(item => item).FirstOrDefault();
+        if (ended == default) return result;
+        var last = new DateOnly(ended.Year, ended.Month, DateTime.DaysInMonth(ended.Year, ended.Month));
+        var code = result[ended];
+        for (var date = ended; date <= last; date = date.AddDays(1)) result[date] = code;
+        return result;
+    }
+
     public PreviewTotals CalculateTotals(IEnumerable<Assignment> assignments, IReadOnlyList<AssignmentCodeDefinition> definitions)
     {
         var resolver = new AssignmentCodeResolver(definitions);

@@ -1,0 +1,94 @@
+PUANTAJ v1.0.1 HAFTALIK UI VE İŞ AKIŞI RAPORU
+Tarih: 22.07.2026
+
+1. Referans görselin bulunduğu tam dosya yolu
+/Users/erhandurgun/Downloads/Haftalik_Vardiya.png
+
+2. Referans görsel inceleme özeti
+Görsel ayrıntılı incelendi. Ana ekranın dış bölümleri korunarak yalnız haftalık vardiya ve izin kartının; başlık, bilgilendirme şeridi, varsayılan vardiya alanı, geniş matris, pastel satırlar, sıcak hafta sonu sütunları ve sağ alttaki üç işlem düğmesi esas alındı.
+
+3. Değiştirilen dosyalar
+- src/Puantaj.Core/Data/PuantajDatabase.cs
+- src/Puantaj.Core/Planning/WeeklyPlanningService.cs
+- src/PuantajApp/EmployeesControl.cs
+- src/PuantajApp/PersonnelCardControl.cs
+- src/PuantajApp/PuantajApp.csproj
+- tests/Puantaj.Core.Tests/WeeklyWorkflowV101Tests.cs
+- PUANTAJ_V1_0_1_WEEKLY_UI_REPORT.txt
+
+4. Her dosyada yapılan değişiklik
+- PuantajDatabase: haftanın ilk kaydı/düzenlemesi için transaction tabanlı güvenli upsert ve tekrar oluşturma koruması.
+- WeeklyPlanningService: güvenli hedef hafta listesi ve İşten Ayrıldı kaydını gerçek ay sonuna genişletme.
+- EmployeesControl: personel formu ve listesi yalnız Ad Soyad/Görev alanlarına sadeleştirildi; eski veriler korunuyor.
+- PersonnelCardControl: referans kart yerleşimi, düzenleme modu, temizleme, hafta yenileme, güvenli kopyalama ve hafta sonu görünümü.
+- PuantajApp.csproj: Excel şablonlarının build/publish kurulum dizinine harici gerçek dosya olarak kopyalanması.
+- WeeklyWorkflowV101Tests: yeni iş akışları, UI sözleşmesi ve paketleme regresyon testleri.
+
+5. Haftalık Sonuç panelinin kaldırılması
+Panel, legend, placeholder ve panele bağlı çift tıklama/diyalog kodu tamamen kaldırıldı. Boş alan bırakılmadı; haftalık seçim kartı kullanılabilir genişliğin tamamını alıyor.
+
+6. Haftalık Vardiya konteynırında yapılan görsel değişiklikler
+Tek açık renk kart, hafif border, 16 px iç boşluk, 11 pt başlık, pastel mavi bilgi şeridi, varsayılan vardiya satırı ve Fill modunda dengeli gün sütunları uygulandı. İlk sütun "Vardiyalar / Günler"; gün başlıkları Türkçe kısa ad ve gerçek gün numarasını gösteriyor.
+
+7. Cumartesi ve Pazar sütun renkleri
+Gerçek DayOfWeek değerine göre Cumartesi/Pazar başlık ve seçim hücreleri sıcak açık krem RGB(255,248,235), ay dışındaki hafta sonu hücreleri RGB(246,236,218) kullanıyor.
+
+8. İşten Ayrıldı satır değişiklikleri
+Koyu/siyah ekran satırı kaldırıldı; okunaklı sıcak pastel RGB(232,219,211) kullanıldı. Excel'deki siyah kapatma kuralı değiştirilmedi.
+
+9. Düzenle butonu davranışı
+Yalnız oluşturulmuş haftada etkinleşir. Eski kayıtları matrise ve varsayılan vardiya alanına geri yükler; kaydetme düğmesi "Değişiklikleri Kaydet" olur. Kayıtlar transaction içinde upsert edilir, duplicate oluşmaz.
+
+10. Tümünü Temizle butonu davranışı
+Ekrandaki geçici seçimler için Türkçe onay gösterir; yalnız form durumunu temizler. Kayıtlı veriyi sessizce silmez.
+
+11. Haftayı Oluştur duplicate koruması
+UI yanında veri katmanında da mevcut personel/hafta kaydı kontrol edilir. İkinci oluşturma reddedilir ve istenen Türkçe uyarı gösterilir. EmployeeId+WorkDate tekilliği korunur.
+
+12. Haftayı Kopyala hata düzeltmesi
+Kaynak hafta hedeflerden çıkarılır. 0 öğede SelectedIndex=-1 ve açıklayıcı mesaj, 1+ öğede SelectedIndex=0 kullanılır. Güvensiz SelectedIndex=1 kaldırıldı; hedef yoksa düğme pasifleşir.
+
+13. İşten Ayrıldı ay sonuna kadar doldurma davranışı
+Seçilen gün dahil gerçek ay sonuna kadar aynı özel davranış kodu yalnız ilgili personel için üretilir. 28/29/30/31 günlük aylar test edildi. Düzenlemede işaret kaldırılırsa önceden otomatik üretilmiş sonraki İşten Ayrıldı kayıtları güvenli şekilde temizlenir.
+
+14. Hafta değişiminde veri yenileme davranışı
+Personel veya hafta değişince düzenleme modu kapanır, matris temizlenir, gerçek tarihler ve seçili haftanın kayıtları yeniden yüklenir; önceki haftanın tikleri taşınmaz.
+
+15. Aylık puantaj şablon düzeltmesi
+Şablonlar uygulama dizinindeki templates altına build ve publish sırasında otomatik kopyalanıyor; single-file EXE içine gömülmeyip çalışma anında erişilebilir kalıyor. Mutlak geliştirme yolu kullanılmıyor.
+
+16. Personeller ekranı sadeleştirmesi
+Liste/formdan Çalışma Şekli ve İşe Giriş Tarihi kaldırıldı. Ekleme ve düzenleme Ad Soyad/Görev ile çalışıyor; mevcut eski sütun/veri değerleri silinmedi ve düzenlemede korunuyor.
+
+17. Eklenen testler
+Kopyalanabilir hafta sayıları; ilk oluşturma/ikinci oluşturma reddi; düzenleme ve izin günü taşıma; duplicate engeli; geçici temizlemenin DB'yi silmemesi; 28/29/30/31 gün ve 5. günden İşten Ayrıldı; ay sınırında hafta sonu; UI panel/buton/sütun sözleşmesi; personel formu sadeleştirmesi; publish şablon ayarları.
+
+18. Test sonuçları
+dotnet test Puantaj.sln -c Release --no-restore: 65 başarılı, 0 başarısız, 0 atlanan. Yeni hedefli testler: 13/13 başarılı.
+
+19. 1366x768 manuel görünüm doğrulaması
+WinForms macOS üzerinde açılamadığı için gerçek Windows ekran görüntüsüyle manuel doğrulama yapılamadı. Kod seviyesinde sol panel sonrası kullanılabilir genişlik, ilk sütun minimum 190 px, yedi gün minimum 68 px, Fill sütun modu ve görünür alt düğme yüksekliği doğrulandı. Windows'ta son görsel kontrol gereklidir.
+
+20. Referans görselle karşılaştırma sonucu
+Başlık, bilgi şeridi, varsayılan vardiya, matris, pastel satırlar, sıcak hafta sonu, tam genişlik ve alt düğme sırası referansa uyarlandı. WinForms standart DataGridView checkbox ve keskin kart köşeleri nedeniyle piksel düzeyinde birebir değildir; işlevsel ve yerleşimsel en yakın standart WinForms yaklaşımı kullanıldı.
+
+21. Release build sonucu
+Başarılı: 0 hata, 1 NU1900 uyarısı. Uyarı yalnız NuGet güvenlik açığı servis dizinine bu ortamdan erişilememesidir; derleme hatası değildir. Self-contained win-x64 PuantajApp.exe üretildi (PE32+ x86-64, yaklaşık 166 MB).
+
+22. Setup.exe sonucu
+Bu macOS ortamında pwsh, Inno Setup iscc ve Wine bulunmadığı için setup/build-release.ps1 çalıştırılamadı ve Setup.exe fiziksel olarak üretilemedi. Windows/Inno Setup üzerinde kalan zorunlu manuel adımdır.
+
+23. Templates paketleme doğrulaması
+Publish klasöründe iki şablon gerçek dosya olarak mevcut. Kaynak/yayın SHA-256 değerleri birebir aynı:
+- Haftalık: 5c5150831e897d371a38f4b21e53aabbb16fecec163de5264f072d973ec5fe2b
+- Aylık: f3818fe4122f4f28ab61345a709f491f24c13617f6492477edafe48fe088b723
+Inno Setup scripti publish dizinini recursive paketlediği için Windows'ta Setup üretildiğinde templates klasörü dahil edilecektir.
+
+24. Lisans sistemi ve Generator’a dokunulmadığı doğrulaması
+src/PuantajLicenseGenerator ve src/Puantaj.Core/Licensing için git diff boştur. RSA anahtarları, doğrulama, lisans formatı, Generator kaynakları ve build ayarları değiştirilmedi.
+
+25. Commit hash
+Bu raporu içeren branch'in tek commit'i kullanılacaktır. Git nesnesi kendi nihai SHA değerini kendi içeriğinde taşıyamadığından kesin SHA, PR'nin tek commit kaydında ve görev sonu terminal raporunda verilecektir.
+
+26. PR numarası ve bağlantısı
+PR #1: https://github.com/KusadasiDijitalAjans/Puantaj/pull/1

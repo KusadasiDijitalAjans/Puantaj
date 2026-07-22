@@ -264,6 +264,53 @@ public sealed class PuantajDatabase
 
     public void Assign(long employeeId, DateOnly date, string code) => AssignMany([employeeId], [date], code);
 
+    public void SaveWeekAssignments(long employeeId, DateOnly from, DateOnly to,
+        IReadOnlyDictionary<DateOnly, string> assignments, bool allowOverwrite)
+    {
+        if (to < from) throw new ArgumentOutOfRangeException(nameof(to));
+        var definitions = GetAssignmentCodes();
+        var resolver = new AssignmentCodeResolver(definitions);
+        var previousEmploymentEnd = allowOverwrite
+            ? GetAssignments(from, to).Where(item => item.EmployeeId == employeeId && resolver.Resolve(item.Code).IsEmploymentEnded)
+                .Select(item => (DateOnly?)item.WorkDate).Min()
+            : null;
+        foreach (var month in assignments.Keys.Select(date => (date.Year, date.Month)).Distinct())
+            EnsureMonthUnlocked(month.Year, month.Month);
+        using var connection = Open();
+        using var transaction = connection.BeginTransaction();
+        if (previousEmploymentEnd is not null)
+        {
+            var monthEnd = new DateOnly(previousEmploymentEnd.Value.Year, previousEmploymentEnd.Value.Month,
+                DateTime.DaysInMonth(previousEmploymentEnd.Value.Year, previousEmploymentEnd.Value.Month));
+            foreach (var endedCode in definitions.Where(item => item.IsEmploymentEnded).Select(item => item.Code))
+                Execute(connection, "DELETE FROM Assignments WHERE EmployeeId=$employee AND WorkDate >= $from AND WorkDate <= $to AND Code=$code;",
+                    transaction, ("$employee", employeeId), ("$from", FormatDate(previousEmploymentEnd.Value)),
+                    ("$to", FormatDate(monthEnd)), ("$code", endedCode));
+        }
+        using (var existing = connection.CreateCommand())
+        {
+            existing.Transaction = transaction;
+            existing.CommandText = "SELECT COUNT(*) FROM Assignments WHERE EmployeeId=$employee AND WorkDate >= $from AND WorkDate <= $to;";
+            existing.Parameters.AddWithValue("$employee", employeeId); existing.Parameters.AddWithValue("$from", FormatDate(from)); existing.Parameters.AddWithValue("$to", FormatDate(to));
+            if (!allowOverwrite && Convert.ToInt32(existing.ExecuteScalar(), CultureInfo.InvariantCulture) > 0)
+                throw new InvalidOperationException("Bu hafta daha önce oluşturuldu. Değişiklik yapmak için Düzenle butonunu kullanın.");
+        }
+        foreach (var assignment in assignments)
+        {
+            using var validation = connection.CreateCommand(); validation.Transaction = transaction;
+            validation.CommandText = "SELECT COUNT(*) FROM Shifts WHERE Code=$code;"; validation.Parameters.AddWithValue("$code", assignment.Value);
+            if (Convert.ToInt32(validation.ExecuteScalar(), CultureInfo.InvariantCulture) == 0)
+                throw new ArgumentException($"Tanımsız çalışma kodu: {assignment.Value}");
+            Execute(connection, """
+                INSERT INTO Assignments (EmployeeId, WorkDate, Code, UpdatedAt)
+                VALUES ($employeeId, $date, $code, $updated)
+                ON CONFLICT(EmployeeId, WorkDate) DO UPDATE SET Code=excluded.Code, UpdatedAt=excluded.UpdatedAt;
+                """, transaction, ("$employeeId", employeeId), ("$date", FormatDate(assignment.Key)),
+                ("$code", assignment.Value), ("$updated", DateTimeOffset.UtcNow.ToString("O")));
+        }
+        transaction.Commit();
+    }
+
     public void AssignMany(IEnumerable<long> employeeIds, IEnumerable<DateOnly> dates, string code)
     {
         var ids = employeeIds.Distinct().ToArray();
