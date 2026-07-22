@@ -1,0 +1,154 @@
+GÖREV 2 SONUÇ RAPORU
+=====================
+
+1. OLUŞTURULAN SOLUTION VE PROJELER
+- Puantaj.sln
+- src/Puantaj.Core/Puantaj.Core.csproj (net8.0, platform bağımsız)
+- src/PuantajApp/PuantajApp.csproj (net8.0-windows, WinForms)
+- src/PuantajLicenseGenerator/PuantajLicenseGenerator.csproj
+  (net8.0-windows, WinForms)
+- tests/Puantaj.Core.Tests/Puantaj.Core.Tests.csproj (net8.0, xUnit)
+
+Haftalık çalışma planı için 26 sayfa ayrı özellik yapılmadı. Görünür ve
+eksiksiz referans sayfa olarak "25.31.05.2026k" seçildi. Aylık dosyanın tek
+sayfası çıktı referansı olarak korundu. Puantaj ana özellikleri geliştirilmedi.
+
+2. LİSANS SİSTEMİNİN ÇALIŞMA ŞEKLİ
+PuantajApp başlangıçta cihaz kodunu üretir ve
+%LocalAppData%\Puantaj\license.dat dosyasını okur. Lisans kodunun RSA dijital
+imzasını embedded public key ile doğrular; lisans sürümü, cihaz kodu, başlangıç
+ve bitiş zamanını kontrol eder. Kontrol geçmeden ana form açılmaz. Geçerli
+lisans varsa yalnız geçici ana ekran otel ve departman bilgisini gösterir.
+
+Lisans yok/bozuk/farklı cihaza ait ise aktivasyon ekranı cihaz kodunu ve
+ERHAN DURGUN / 0 544 527 21 87 iletişim bilgisini gösterir. Süre dolduğunda
+istenen yenileme mesajı gösterilir. Generator, dışarıdan seçilen private PEM
+anahtarla cihaz koduna özel süreli veya süresiz lisans üretir.
+
+3. CİHAZ KODUNDA KULLANILAN KAYNAKLAR
+- Windows MachineGuid (64-bit registry)
+- Windows sistem birimi volume serial değeri
+- Erişilebiliyorsa BIOS/system product UUID (wmic)
+- Erişilebiliyorsa işlemci kimliği (wmic), aksi halde registry işlemci adı
+
+MAC adresi kullanılmadı. Kaynaklar normalize edilip anahtar adına göre
+sıralanır, SHA-256 ile hashlenir ve ilk 8 byte
+PUAN-XXXX-XXXX-XXXX-XXXX biçiminde gösterilir. Tekil kaynak hataları yutulur;
+hiç kaynak yoksa anlaşılır hata verilir. Ham donanım bilgileri gösterilmez.
+
+4. KULLANILAN DİJİTAL İMZA ALGORİTMASI
+3072-bit geliştirme RSA anahtar çifti oluşturuldu. Lisans payload'u UTF-8 JSON
+olarak RSA-PSS + SHA-256 ile imzalanır. Lisans zarfı Base64URL kodlanır.
+
+5. PUBLIC/PRIVATE KEY SAKLAMA YÖNTEMİ
+- Geliştirme public key'i PuantajApp/PublicKeyProvider.cs içindedir.
+- Private key PuantajApp içinde veya izlenen kaynaklarda yoktur.
+- Geliştirme private key'i yerelde secrets/development.private.pem olarak
+  oluşturuldu; secrets/, *.private.pem, *.pfx ve license-private-key.*
+  .gitignore kapsamındadır. git check-ignore ile dışlandığı doğrulandı.
+- Generator private key'i gömülü taşımaz; kullanıcı güvenli dış PEM dosyasını
+  seçer. Dosya yoksa açık hata verir.
+- Üretim öncesi yeni gerçek anahtar çifti güvenli/çevrimdışı ortamda
+  oluşturulmalı; geliştirme anahtarı üretimde kullanılmamalıdır.
+
+6. AKTİVASYON EKRANININ DURUMU
+WinForms aktivasyon ekranı uygulandı: başlık, lisans yok/süre doldu mesajları,
+yetkili ve telefon, salt-okunur cihaz kodu, lisans kodu alanı, Etkinleştir ve
+Çıkış düğmeleri vardır. Başarılı doğrulamada lisans yerel dosyaya atomik
+yazılır. macOS'ta WinForms çalışmadığı ve .NET SDK bulunmadığı için ekran bu
+ortamda çalıştırılarak doğrulanamadı.
+
+7. GENERATOR EKRANININ DURUMU
+Müşteri adı, otel adı, departman, cihaz kodu, başlangıç/bitiş tarihi, süresiz
+seçeneği, private key seçimi, lisans oluşturma, panoya kopyalama ve .dat
+kaydetme alanları uygulandı. Private key eksikliği ve geçersiz tarih için açık
+hata vardır. macOS'ta çalıştırılamadı.
+
+8. LİSANS KOPYALAMA / DEĞİŞTİRME TESTİNİN SONUCU
+Otomatik test kaynakları hazırlandı:
+- Başka cihaz kodu DeviceMismatch sonucu verir.
+- İmzalı otel alanında tek değişiklik InvalidSignature sonucu verir.
+- Yanlış public key InvalidSignature sonucu verir.
+
+Bu testler ortamda dotnet komutu bulunmadığı için fiilen çalıştırılamadı.
+Windows üzerinde EXE+license.dat ikinci bilgisayara kopyalama manuel senaryosu
+docs/LISANS_MIMARISI.md içinde yazıldı ve henüz uygulanmadı.
+
+9. SÜRELİ VE SÜRESİZ LİSANS TESTLERİ
+Kaynak testleri süresi geçmiş lisansın Expired olmasını ve ExpiresAt=null olan
+süresiz lisansın kabulünü kapsar. Başlangıçtan önce lisans NotYetValid olur.
+dotnet bulunmadığından test sonuçları alınamadı.
+
+10. ÇALIŞAN TESTLER / STATİK KONTROLLER
+- 4 adet csproj XML ayrıştırma kontrolü: BAŞARILI.
+- C# kaynaklarında temel süslü parantez denge taraması: BAŞARILI.
+- Solution ilk satırı/biçimi temel kontrolü: BAŞARILI.
+- Private key git ignore kontrolü: BAŞARILI.
+- Üretilen private key ile embedded public key eşleşme hash kontrolü:
+  BAŞARILI.
+- Excel SHA-256 bütünlük kontrolü: BAŞARILI.
+
+Hazırlanan xUnit senaryoları:
+- Geçerli lisans
+- Yanlış cihaz
+- Değiştirilmiş lisans
+- Süresi dolmuş lisans
+- Süresiz lisans
+- Yanlış public key
+- Eksik cihaz bileşeni
+- Cihaz bileşeni sıralama/boşluk kararlılığı
+
+11. BAŞARISIZ VEYA ÇALIŞTIRILAMAYAN TESTLER
+- dotnet restore: ÇALIŞTIRILAMADI (dotnet: command not found)
+- dotnet build: ÇALIŞTIRILAMADI (dotnet: command not found)
+- dotnet test: ÇALIŞTIRILAMADI (dotnet: command not found)
+- dotnet format --verify-no-changes: ÇALIŞTIRILAMADI
+  (dotnet: command not found)
+- WinForms manuel UI akışı: ÇALIŞTIRILAMADI (macOS/SDK yok)
+
+Kod veya test başarısızlığı gözlenmedi; derleyici/test çalıştırıcısı olmadığı
+için derleme başarısı iddia edilmemektedir.
+
+12. macOS NEDENİYLE DOĞRULANAMAYAN WINDOWS BÖLÜMLERİ
+- PuantajApp ve Generator WinForms ekranlarının açılması/görsel yerleşimi
+- MachineGuid, volume serial, wmic UUID/CPU değerlerinin gerçek Windows okuması
+- %LocalAppData% lisans yazma/yeniden açma davranışı
+- Lisanssız açılış -> Generator -> aktivasyon -> ana ekran uçtan uca akışı
+- EXE ve lisansın ikinci Windows bilgisayarında reddedilmesi
+- Windows hedefli build/publish (EXE paketleme zaten görev kapsamı dışı)
+
+Windows manuel kontrol listesi docs/LISANS_MIMARISI.md içinde verilmiştir.
+
+13. DEĞİŞTİRİLEN VE OLUŞTURULAN DOSYALAR
+Oluşturulan:
+- .gitignore
+- Puantaj.sln
+- src/Puantaj.Core altında 13 kaynak/proje dosyası
+- src/PuantajApp altında 5 kaynak/proje dosyası
+- src/PuantajLicenseGenerator altında 3 kaynak/proje dosyası
+- tests/Puantaj.Core.Tests altında proje ve test dosyası
+- docs/LISANS_MIMARISI.md
+- GOREV_2_SONUC_RAPORU.txt
+
+Güncellenen:
+- README.md
+- docs/GOREV_PLANI.md
+- docs/DONUSUM_KURALLARI.md (kesinleşen A-E -> X, Aİ, G ve Sİ kararları)
+
+Görev 1 belgeleri silinmedi. Yerel ve ignore edilen geliştirme private key'i
+secrets/development.private.pem dosyasıdır; Git durumuna dahil değildir.
+
+14. EXCEL DOSYALARININ DEĞİŞTİRİLMEDİĞİNİN TEYİDİ
+Excel dosyaları açılmadı, yeniden kaydedilmedi veya değiştirilmedi. Son hashler:
+- Haftalık: 5c5150831e897d371a38f4b21e53aabbb16fecec163de5264f072d973ec5fe2b
+- Aylık: f3818fe4122f4f28ab61345a709f491f24c13617f6492477edafe48fe088b723
+Bu değerler Görev 2 başındaki değerlerle aynıdır.
+
+15. GIT İŞLEMLERİ TEYİDİ
+Commit, push ve PR yapılmadı.
+
+16. GÜVENLİK SINIRI
+Dijital imza, cihaz eşleşmesi ve private key ayrımı sıradan kopyalama ve elle
+değiştirmeye karşı koruma sağlar. Tamamen kırılamaz masaüstü yazılım iddiası
+yoktur. Offline saat geri alma, ileri düzey tersine mühendislik ve donanım
+kimliği taklidi ancak kapsam dışı ek önlemlerle azaltılabilir.

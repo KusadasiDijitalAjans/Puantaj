@@ -1,0 +1,85 @@
+PUANTAJ LICENSE GENERATOR BUILD RAPORU
+======================================
+
+Değiştirilen dosyalar
+---------------------
+- src/Puantaj.Core/Licensing/LicenseGenerationService.cs (yeni)
+- src/PuantajLicenseGenerator/GeneratorForm.cs
+- src/PuantajLicenseGenerator/PuantajLicenseGenerator.csproj
+- tests/Puantaj.Core.Tests/LicenseGeneratorTests.cs (yeni)
+- LICENSE_GENERATOR_BUILD_RAPORU.txt (yeni)
+- publish/LicenseGenerator-win-x64/PuantajLicenseGenerator.exe (yayın çıktısı)
+
+Yapılan geliştirmeler
+--------------------
+- Lisans üretme işlemi WinForms olay kodundan test edilebilir LicenseGenerationService sınıfına taşındı.
+- Cihaz kodu, müşteri adı, otel adı ve departman adı boş bırakılamıyor.
+- Cihaz kodu mevcut formatla uyumlu biçimde büyük harfe normalize ediliyor.
+- Generator ekranındaki lisans türleri yalnız “1 Yıllık” ve “Sınırsız” olarak sınırlandı.
+- 1 yıllık lisansın ExpiresAt değeri IssuedAt.AddYears(1) olarak hesaplanıyor.
+- Sınırsız lisansta IsLifetime=true ve ExpiresAt=null üretiliyor.
+- Lisans kodu mevcut LicenseSerializer ve RsaLicenseSigner ile RSA-PSS/SHA-256 imzalanıyor.
+- Panoya kopyalama ve license.dat olarak kaydetme akışları korundu.
+- Üretilen kod mevcut PuantajApp LicenseValidator doğrulamasıyla uyumludur; lisans formatı değiştirilmedi.
+
+Güvenlik yöntemi
+----------------
+- Private key EXE içine gömülmedi.
+- Generator private key'i çalışma anında kullanıcının seçtiği harici PKCS#8 PEM dosyasından okuyor.
+- Private key bulunamazsa “Private key bulunamadı. Git dışında saklanan PEM anahtar dosyasını seçin.” hatası gösteriliyor.
+- Publish klasöründe .pem, .pfx, *private* veya license.dat bulunmadığı doğrulandı.
+- Yayın EXE'sinde “BEGIN PRIVATE KEY” veya geliştirme anahtar içeriği bulunmuyor.
+- secrets/ ve *.private.pem kuralları .gitignore içinde kalmaya devam ediyor.
+- Production anahtarı değiştirilmedi; PuantajApp içine private key eklenmedi.
+
+Test sonuçları
+--------------
+- 1 yıllık lisans üretildi; başlangıçtan 11 ay sonra geçerli olduğu doğrulandı.
+- Bitiş tarihinin başlangıçtan tam bir yıl sonrası olduğu doğrulandı.
+- Tam yıl sınırından sonraki ilk tick'te Expired sonucu doğrulandı.
+- Sınırsız lisans üretildi; ExpiresAt=null ve 25 yıl sonraki doğrulama başarılı.
+- Yanlış cihaz kodunda DeviceMismatch sonucu doğrulandı.
+- İmzalı içerik değiştirildiğinde InvalidSignature sonucu doğrulandı.
+- Eksik private key için anlaşılır Türkçe hata doğrulandı.
+- Generator'a özel yeni testler: 5/5 başarılı.
+- Tüm mevcut testler: 47 başarılı, 0 başarısız, 0 atlanan.
+- Toplam test süresi: yaklaşık 1 dakika 45 saniye.
+
+Build sonucu
+------------
+- Hedef: net8.0-windows / win-x64.
+- Yapılandırma: Release.
+- Self-contained: evet; hedef Windows bilgisayarda ayrıca .NET kurulumu gerektirmez.
+- PublishSingleFile: evet.
+- PublishTrimmed: hayır; WinForms ve reflection uyumluluğu için güvenilir seçenek tercih edildi.
+- Build/publish sonucu: başarılı, 0 uyarı, 0 hata.
+- Dosya türü: PE32+ executable (GUI), x86-64, Microsoft Windows.
+- Dosya boyutu: yaklaşık 166 MB.
+- SHA-256: aa57a459e2939f33350c498f8f11dc9d8b1697edd43fad6bf59d839f8f41b8da
+- macOS üzerinde Windows GUI çalıştırılamadığı için gerçek pencere açılışı Windows manuel kontrolüne bırakıldı.
+
+Oluşturulan EXE'nin tam yolu
+----------------------------
+/Users/erhandurgun/Projects/Puantaj/publish/LicenseGenerator-win-x64/PuantajLicenseGenerator.exe
+
+Generator kullanım adımları
+----------------------------
+1. PuantajLicenseGenerator.exe dosyasını güvenli yönetici bilgisayarında açın.
+2. Müşteri adı, otel adı, departman adı ve PuantajApp'in gösterdiği cihaz kodunu girin.
+3. Lisans türü olarak “1 Yıllık” veya “Sınırsız” seçin.
+4. Başlangıç tarihini kontrol edin. 1 yıllık lisans bu tarihten tam bir yıl sonrasına kadar geçerli olur.
+5. “Private key seç...” ile Git dışında güvenli saklanan development/production PKCS#8 PEM private key dosyasını seçin.
+6. “Lisans oluştur” düğmesine basın.
+7. Kodu “Lisans kodunu kopyala” ile panoya alın veya “Lisans dosyası kaydet” ile license.dat oluşturun.
+8. Kodu/dosyayı yalnız hedef cihazdaki PuantajApp aktivasyon ekranında kullanın.
+9. Private key dosyasını lisans kodu, EXE veya müşteri dosyalarıyla birlikte göndermeyin.
+
+Kalan riskler
+-------------
+- EXE henüz Authenticode ile imzalanmadı; Windows SmartScreen ilk çalıştırmada uyarı gösterebilir.
+- Harici private key dosyasının güvenliği işletim sistemi kullanıcı izinleri, disk şifreleme ve fiziksel erişim güvenliğine bağlıdır.
+- Tek dosyalı self-contained uygulama bazı native bileşenleri Windows geçici klasörüne kontrollü olarak açabilir.
+- Development private key mevcut format uyumluluğu için korunmuştur; production dağıtımı öncesi güvenli production key prosedürü ayrıca uygulanmalıdır.
+- Generator yalnız yazılım sahibi tarafından kullanılmalı ve müşteri bilgisayarlarına verilmemelidir.
+
+Commit, push veya PR oluşturulmadı.

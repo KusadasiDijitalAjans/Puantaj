@@ -1,0 +1,305 @@
+================================================================
+PUANTAJ V1.0 — QA BULGULARINI DÜZELTME RAPORU
+================================================================
+Tarih: 2026-07-22
+Kapsam: QA_V1_DENETIM_RAPORU.md içindeki "Yayın Öncesi Düzeltilmesi Gerekenler"
+        (Bölüm 11) listesindeki 10 öncelikli madde.
+Yöntem: Her madde önce kaynak kodda tekrar okunarak doğrulandı, ardından
+        minimal/hedefli değişiklikle düzeltildi. Mimari değişiklik, refactor
+        veya yeni özellik eklenmedi. Şablon dosyaları ve veritabanı şeması
+        değiştirilmedi.
+
+----------------------------------------------------------------
+1) DOĞRULANAN BULGULAR (hepsi kaynak kodda tekrar teyit edildi)
+----------------------------------------------------------------
+
+Tüm 10 madde, düzeltmeden önce ilgili kaynak dosyalar tek tek okunarak
+yeniden doğrulandı. Hiçbiri yanlış alarm çıkmadı — raporun tamamı isabetliydi.
+
+ 1. Aylık Excel/PDF/yazdırma + ay kilitleme ana ekrandan erişilemiyordu.
+    Doğrulandı: MainForm.cs'de MonthlyExportControl'ü örnekleyen tek bir
+    satır yoktu; LockMonth(...) çağrısının tek kaynağı da bu erişilemeyen
+    sınıftı.
+
+ 2. İstisna matrisi (_matrix) personel/hafta değişiminde temizlenmiyordu.
+    Doğrulandı: RefreshPerson/RefreshWeek yalnızca RefreshWeek içindeki
+    "SetMatrixEnabledDays" ile ay-dışı günleri false yapıyordu, seçili
+    (işaretli) günleri değil.
+
+ 3. HireDate hiçbir ekrandan girilemiyor, her düzenlemede sessizce
+    siliniyordu. Doğrulandı: EmployeesControl.EditEmployee() üçüncü
+    parametreyi literal `null` olarak gönderiyordu.
+
+ 4. Personel düzenleme akışında iptal edilen alt-diyalog mevcut değeri
+    siliyordu. Doğrulandı: `position ?? ""` / `pattern ?? ""` deseni.
+
+ 5. Restore sonrası açık ekranlar bayat veriyle çalışmaya devam edebiliyordu.
+    Doğrulandı: Restore() yalnızca "kapatıp yeniden açın" mesajı gösterip
+    hiçbir zorlayıcı önlem almıyordu.
+
+ 6. Uygulamanın iki kez açılmasına karşı hiçbir koruma yoktu. Doğrulandı:
+    Program.cs'de Mutex/single-instance kontrolü yoktu.
+
+ 7. Şablon arama, Excel'in oluşturduğu "~$...xlsx" kilit dosyalarını normal
+    şablon sanıp "birden fazla eşleşme" hatası veriyordu. Doğrulandı:
+    FindWeeklyTemplate/FindMonthlyTemplate yalnızca ad alt dizesine bakıyordu.
+
+ 8. Bozuk/desteklenmeyen logo dosyası ExcelBranding.AddLogo içinde
+    yakalanmamış bir istisna fırlatıp TÜM dışa aktarımı (haftalık/aylık/
+    yazdırma/PDF) durdurabiliyordu. Doğrulandı: try/catch yoktu.
+
+ 9. Ay zaten kilitliyken AskToLockMonth yine de "kilitlensin mi?" sorusu
+    soruyordu (rapor bunu, madde 1 düzeltilince ortaya çıkacak ikincil bir
+    kusur olarak öngörmüştü — düzeltme sırasında aynı anda giderildi).
+
+10. Excel/PDF/Yazdır butonlarında çift tıklama / tekrar başlatma koruması
+    yoktu; hızlı çift tıklama teorik olarak paralel Excel COM örnekleri
+    başlatabilirdi. Doğrulandı: butonlar işlem sırasında disable edilmiyordu.
+
+11. Üretim RSA anahtar çiftinin üretilip üretilmediği doğrulanamadı — repo
+    hâlâ geliştirme anahtarını taşıyor. Bu, üretim ortamına dair bir karar
+    olduğundan KOD DEĞİŞTİRİLMEDİ; yalnızca risk notu güçlendirildi.
+
+----------------------------------------------------------------
+2) YANLIŞ ALARM VEYA UYGULANMAYAN BULGULAR
+----------------------------------------------------------------
+
+Yanlış alarm: YOK. Top-10 listesindeki hiçbir madde yeniden incelemede
+gerçek dışı çıkmadı.
+
+Bilinçli olarak UYGULANMAYAN (kapsam dışı bırakılan, kullanıcı talimatına
+göre yalnızca 10 öncelikli madde işlendi) bulgular — bunlar orijinal
+raporda "Orta/Düşük/Yayın Sonrası" olarak zaten ayrı sınıflandırılmıştı:
+
+ - Excel/COM işlemlerinin UI thread'inde senkron çalışması (Orta #1):
+   Dokunulmadı. Async/Task.Run'a geçmek mimari bir refactor gerektirir;
+   kullanıcı talimatı "gereksiz mimari değişiklik yapma" ve yalnızca çift
+   tıklama korumasını (madde 9/10) istiyordu — o uygulandı, arka planda
+   çalıştırma uygulanmadı. Kalan risk olarak aşağıda listelendi.
+ - Türkçe İ/ı normalizasyon tutarsızlığı (Orta #4): Mevcut sabit kodları
+   etkilemiyor, yalnızca gelecekte girilecek özel kodlar için risk;
+   kullanıcının 10 maddelik listesinde yok, dokunulmadı.
+ - Restore güvenlik yedeklerinin (`restore-oncesi-*.zip`) otomatik
+   temizlenmemesi (Orta #6): Rapor bunu zaten "Yayın Sonrasına
+   Bırakılabilecekler" listesine koymuştu; dokunulmadı.
+ - `wmic` bağımlılığı (Orta #8), aynı isimli personel ayrımı (Orta #10),
+   sıfır loglama altyapısı (Kod Kalitesi #1), ölü kod temizliği
+   (WeeklyPlanControl): Kullanıcının 10 maddelik listesinde yok,
+   dokunulmadı.
+ - "Haftayı başka personele kopyalama" özelliği: Zaten mevcut ve çalışır
+   durumda (PersonnelCardControl.CopyWeek / CopyWeekForm). Talimat gereği
+   yeniden yazılmadı, dokunulmadı.
+
+----------------------------------------------------------------
+3) DEĞİŞTİRİLEN DOSYALAR VE YAPILAN DEĞİŞİKLİKLER
+----------------------------------------------------------------
+
+--- src/Puantaj.Core/Excel/WeeklyExcelExporter.cs ---
+FindWeeklyTemplate artık dosya adı "~$" ile başlayan girdileri (Excel'in
+önizleme sırasında oluşturduğu gizli kilit dosyaları) eşleşme kümesinden
+filtreliyor. (Madde 6)
+
+--- src/Puantaj.Core/Excel/MonthlyExcelExporter.cs ---
+FindMonthlyTemplate için aynı "~$" filtresi eklendi. (Madde 6)
+
+--- src/Puantaj.Core/Excel/ExcelBranding.cs ---
+AddLogo gövdesi try/catch ile sarmalandı; bozuk/okunamayan bir logo
+dosyası artık yalnızca logoyu atlıyor, tüm dışa aktarımı durdurmuyor.
+(Madde 7)
+
+--- src/PuantajApp/MainForm.cs ---
+- Başlık çubuğuna "📅 Aylık Puantaj" butonu eklendi; bu buton
+  MonthlyExportControl'ü modal bir diyalogda açıyor (aynı ShowDialog
+  deseniyle, Ayarlar/Personeller/Kilitli Aylar gibi). Bu, aylık
+  Excel/PDF/yazdırma ve ay kilitleme akışını ilk kez aktif ana ekrana
+  bağlıyor. (Madde 1)
+- "▤ Yazdır" butonu artık işlem sırasında disable ediliyor (RunExclusive
+  yardımcı metodu ile); çift tıklama/yeniden başlatma engellendi. (Madde 9)
+
+--- src/PuantajApp/MonthlyExportControl.cs ---
+- Üç buton (Excel/PDF/Yazdır) artık alan (field) olarak tutuluyor ve
+  RunExclusive() ile işlem sırasında hepsi birlikte disable ediliyor;
+  işlem bitince tekrar enable ediliyor. (Madde 9)
+- AskToLockMonth() başına `if (_database.IsMonthLocked(_year(), _month()))
+  return;` eklendi — ay zaten kilitliyse artık soru sorulmuyor. (Madde 8)
+
+--- src/PuantajApp/PersonnelCardControl.cs ---
+RefreshWeek() artık (yükleme/bulk-rebuild sırasında olmadığı sürece)
+başında koşulsuz ClearMatrix() çağırıyor. Bu metot hem personel değişince
+(RefreshPerson → RefreshWeek zinciriyle) hem hafta sekmesi değişince
+(_weeks.SelectedIndexChanged → RefreshWeek) tetiklendiği için tek bir
+noktadan hem personel hem hafta değişimini kapsıyor. Sonuç: A personeli
+için işaretlenip kaydedilmeyen istisnalar artık B personeline veya
+başka bir haftaya sızmıyor. (Madde 2)
+
+--- src/PuantajApp/EmployeesControl.cs ---
+- EditEmployee() tamamen yeniden yazıldı: üç ayrı sıralı PromptDialog
+  yerine tek bir EmployeeEditDialog formu açılıyor (ad, görev, çalışma
+  şekli, işe giriş tarihi — tek "Kaydet"/"İptal").
+- Dosyanın sonuna yeni internal EmployeeEditDialog sınıfı eklendi:
+  * Ad/Görev/Çalışma şekli için mevcut değerlerle önceden doldurulmuş
+    TextBox'lar.
+  * İşe giriş tarihi için ShowCheckBox=true olan bir DateTimePicker
+    (kutucuk işaretli değilse HireDate = null, işaretliyse seçilen tarih).
+  * Form İptal edilirse (`DialogResult != OK`) hiçbir veritabanı çağrısı
+    yapılmıyor — mevcut ad/görev/çalışma şekli/HireDate tamamen korunuyor.
+  * Form Kaydet ile kapatılırsa hem UpdateEmployee (ad) hem
+    UpdateEmployeeDetails (görev/çalışma şekli/HireDate — artık gerçek
+    seçilen değerle, literal null değil) çağrılıyor.
+  (Madde 3 — HireDate artık silinmiyor, düzenlenebiliyor, iptal edilen
+  alanlar korunuyor; ayrıca orijinal raporun "tek form olmalı" önerisi
+  aynı düzeltmeyle karşılanmış oldu.)
+
+--- src/PuantajApp/SettingsControl.cs ---
+Restore() başarılı olduktan sonra artık "kapatıp yeniden açın" diye rica
+etmek yerine kullanıcıyı bilgilendirip Application.Exit() çağırarak
+uygulamayı doğrudan kapatıyor. Böylece restore sonrası hiçbir ekran eski
+(restore öncesi) veriyle çalışmaya devam edemiyor. (Madde 4)
+
+--- src/PuantajApp/Program.cs ---
+Main() başına adlandırılmış bir Mutex ("Global\Puantaj_SingleInstance_...")
+eklendi. Mutex zaten alınmışsa (uygulama zaten çalışıyorsa) kullanıcıya
+bilgi mesajı gösterilip hiçbir lisans/veritabanı işlemi yapılmadan
+program sonlandırılıyor. (Madde 5)
+
+--- src/PuantajApp/PublicKeyProvider.cs ---
+Üretim anahtarı DEĞİŞTİRİLMEDİ (talimat gereği). Yalnızca:
+- Dosya başına derleme zamanında görünen bir `#warning` eklendi (bu,
+  PuantajApp projesinde TreatWarningsAsErrors kapalı olduğundan build'i
+  kırmıyor, yalnızca her derlemede geliştiriciye hatırlatma yapıyor).
+- Kod içi yorum, riski açıkça ve Türkçe olarak anlatacak şekilde
+  genişletildi (geliştirme anahtarı olduğu, üretime çıkmadan önce ne
+  yapılması gerektiği, bu raporda risk maddesi olarak işaretlendiği).
+  (Madde 10)
+
+--- tests/Puantaj.Core.Tests/PersonnelLifecycleTests.cs ---
+Yeni test: UpdateEmployeeDetailsPersistsHireDateAndDoesNotResetItWhenReSubmitted
+HireDate'in kaydedildiğini ve başka bir alan (ad) güncellenirken mevcut
+HireDate değeri geçilirse silinmediğini doğruluyor (madde 3 regresyon testi).
+
+--- tests/Puantaj.Core.Tests/OutputTests.cs ---
+- Yeni test: TemplateSearchIgnoresExcelLockFiles — templates klasörüne
+  geçici "~$...xlsx" dosyaları eklenip FindWeeklyTemplate/
+  FindMonthlyTemplate'in hâlâ tek doğru şablonu bulduğunu doğruluyor
+  (madde 6 regresyon testi).
+- Yeni test: CorruptLogoFileDoesNotAbortExport — geçersiz bayt içeriğine
+  sahip bir "logo.png" ile haftalık ve aylık dışa aktarımın istisna
+  fırlatmadan tamamlandığını doğruluyor (madde 7 regresyon testi).
+
+----------------------------------------------------------------
+4) EKLENEN TESTLER (ÖZET)
+----------------------------------------------------------------
+1. PersonnelLifecycleTests.UpdateEmployeeDetailsPersistsHireDateAndDoesNotResetItWhenReSubmitted
+2. OutputTests.TemplateSearchIgnoresExcelLockFiles
+3. OutputTests.CorruptLogoFileDoesNotAbortExport
+
+Not: Madde 1 (ana ekrana bağlama), 2 (matris temizleme), 4 (restore sonrası
+kapatma), 5 (single-instance), 8 (kilitliyken sorma), 9 (çift tık koruması)
+ve 10 (risk notu) tamamen veya kısmen PuantajApp (WinForms UI) katmanında
+uygulandı. Bu katman için proje genelinde hâlihazırda hiçbir otomatik test
+projesi bulunmuyor (QA raporu Kod Kalitesi #5'te de belirtildiği gibi) ve
+yeni bir WinForms UI test altyapısı kurmak "gereksiz mimari değişiklik
+yapma" talimatına aykırı olacağından eklenmedi. Bu maddeler kod okuması ile
+elle doğrulandı (bkz. Bölüm 6) ve Core katmanındaki karşılıkları
+(IsMonthLocked, UpdateEmployeeDetails, Find*Template, ExcelBranding) test
+kapsamına alındı.
+
+----------------------------------------------------------------
+5) TÜM TEST SONUÇLARI
+----------------------------------------------------------------
+Komut: dotnet test tests/Puantaj.Core.Tests/Puantaj.Core.Tests.csproj
+
+Toplam test sayısı: 50
+Geçti:               50
+Kaldı (Failed):       0
+Atlandı:              0
+Toplam süre:          ~1 dk 58 sn
+
+Test sınıfları: MvpTests, PersonnelCardTests, PersonnelLifecycleTests,
+SettingsLockBackupTests, LicenseTests, LicenseGeneratorTests, OutputTests
+(3 yeni test dahil, öncekiler dahil hepsi başarılı).
+
+----------------------------------------------------------------
+6) BUILD SONUCU
+----------------------------------------------------------------
+- Puantaj.Core: BAŞARILI (dotnet build → "Puantaj.Core -> ...dll").
+- Puantaj.Core.Tests: BAŞARILI, 50/50 test yeşil.
+- PuantajApp ve PuantajLicenseGenerator: Bu macOS makinesinde derlenemedi
+  — "Microsoft.NET.Sdk.WindowsDesktop.targets" bulunamadı hatası, çünkü
+  WindowsDesktop workload'u bu ortamda kurulu değil. Bu, orijinal
+  QA_V1_DENETIM_RAPORU.md'de zaten açıkça belirtilen bir ortam kısıtıydı
+  ("macOS ortamında WinForms EXE çalıştırılamadığı için..."), bu turda da
+  değişmedi ve kapsam dışıdır (workload kurulumu kod düzeltmesi değildir).
+  Bu nedenle PuantajApp'teki tüm değişiklikler (MainForm.cs,
+  MonthlyExportControl.cs, PersonnelCardControl.cs, EmployeesControl.cs,
+  SettingsControl.cs, Program.cs, PublicKeyProvider.cs) derleyici yerine
+  satır satır elle okunarak sözdizimi ve tip uyumu açısından doğrulandı;
+  hepsi mevcut proje kurallarına (nullable, ImplicitUsings) uygun.
+  ÖNEMLİ: V1.0 yayınlanmadan önce bu dosyalar gerçek bir Windows
+  makinesinde `dotnet build` ile mutlaka derlenmelidir.
+
+----------------------------------------------------------------
+7) ŞABLON HASH SONUÇLARI
+----------------------------------------------------------------
+templates/HAFTALIK ÇALIŞMA PLANI 2026.xlsx
+  SHA-256: 5c5150831e897d371a38f4b21e53aabbb16fecec163de5264f072d973ec5fe2b
+
+templates/HAZİRAN    2025 PUANTAJ -.xlsx
+  SHA-256: f3818fe4122f4f28ab61345a709f491f24c13617f6492477edafe48fe088b723
+
+Bu değerler hiçbir düzeltme adımında değiştirilmedi (şablon dosyalarına
+hiçbir Write/Edit işlemi yapılmadı). Ayrıca OutputTests.
+Weekly_and_monthly_samples_are_created_reopenable_and_do_not_change_templates
+testi, her export sonrasında şablon hash'lerinin export öncesiyle birebir
+aynı kaldığını otomatik olarak doğruluyor ve bu test yeşil.
+
+----------------------------------------------------------------
+8) KALAN RİSKLER
+----------------------------------------------------------------
+1. ÜRETIM LİSANS ANAHTARI (Madde 10 — yüksek risk, yayın engelleyici):
+   PublicKeyProvider.Pem hâlâ geliştirme anahtarı. V1.0 yayınlanmadan önce
+   ayrı bir üretim RSA anahtar çifti üretilmeli, yalnızca üretim açık
+   anahtarı gömülmeli, geliştirme özel anahtarının hiçbir dağıtım
+   paketine dahil olmadığı teyit edilmelidir. Bilerek değiştirilmedi.
+2. Windows'ta uçtan uca elle doğrulama hâlâ yapılmadı: Bu tur yalnızca
+   kod düzeltmesi ve Core testleriyle sınırlıydı; PuantajApp bu ortamda
+   derlenemediği için gerçek bir WinForms çalıştırması/tıklaması
+   gerçekleşmedi. Yayın öncesi Windows'ta lisans aktivasyonu → personel
+   ekleme → haftalık plan → aylık Excel/PDF/yazdırma → ay kilitleme →
+   kilit kaldırma → yedekleme/geri yükleme akışı elle test edilmelidir.
+3. Excel/COM işlemleri hâlâ UI thread'inde senkron çalışıyor (yalnızca
+   çift tıklama engellendi, dondurma riski azaltılmadı) — kapsam dışı
+   bırakıldı, kullanıcı onayı olmadan dokunulmadı.
+4. Sıfır loglama altyapısı hâlâ yok; uzaktan teşhis zor olmaya devam
+   ediyor — kapsam dışı bırakıldı.
+5. Restore güvenlik yedekleri (`restore-oncesi-*.zip`) hâlâ otomatik
+   temizlenmiyor — kapsam dışı, yayın sonrasına bırakılabilir.
+6. Türkçe İ/ı normalizasyon tutarsızlığı, `wmic` bağımlılığı, aynı isimli
+   personel ayrımı, ölü kod (WeeklyPlanControl) — hepsi kapsam dışı
+   bırakıldı, orijinal raporda zaten düşük/orta öncelikli olarak
+   sınıflandırılmıştı.
+7. Kilit kaldırma sonrası değişikliklerin kim/ne zaman yaptığına dair
+   audit log hâlâ yok — kapsam dışı.
+
+----------------------------------------------------------------
+9) V1.0 YAYINLANMAYA HAZIR MI?
+----------------------------------------------------------------
+KISMEN — kod seviyesinde HAYIR'dan EVET'E doğru önemli bir adım atıldı,
+ama iki koşul karşılanmadan yayın hâlâ önerilmez:
+
+  a) Üretim lisans anahtarı üretilip PublicKeyProvider.Pem içine
+     gömülmeli ve geliştirme özel anahtarının dağıtım dışında kaldığı
+     teyit edilmelidir (Kalan Risk #1). Bu, bu turda BİLEREK
+     değiştirilmedi.
+  b) Bu turda düzeltilen 10 maddenin tamamı gerçek bir Windows
+     makinesinde derlenip elle uçtan uca test edilmelidir (Kalan
+     Risk #2) — macOS ortamı PuantajApp'in derlenmesine izin vermediği
+     için bu adım bu oturumda tamamlanamadı.
+
+Bu iki koşul karşılandıktan sonra, orijinal raporun 5 kritik maddesinin
+(1.1–1.5) tamamı artık koda yansıtılmış durumda: aylık çıktı/kilitleme
+ana ekrana bağlandı, istisna matrisi sızıntısı giderildi, HireDate
+düzeltildi, iptal veri kaybı giderildi, üretim anahtarı riski açıkça
+belgelendi (değiştirilmeden). Orta öncelikli maddelerden şablon
+kırılganlığı, single-instance, bozuk logo ve tekrarlanan kilitleme
+sorusu/çift tıklama da ayrıca giderildi.

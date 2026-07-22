@@ -1,0 +1,53 @@
+1. .NET SDK kuruldu mu, sürümü nedir?
+Evet. Homebrew ile .NET SDK 8.0.129 kuruldu; runtime 8.0.29, osx-arm64. Homebrew cask yönetici parolası istediği için parola istemeyen dotnet@8 formülü kullanıldı. Homebrew formülünde WindowsDesktop SDK hedefleri bulunmadığından WinForms cross-build, indirilmiş resmi tam SDK 10.0.302 geçici olarak açılarak gerçekleştirildi.
+
+2. dotnet restore sonucu
+Başarılı. Dört projenin NuGet bağımlılıkları restore edildi. ClosedXML 0.105.0, DocumentFormat.OpenXml 3.1.1 ve Microsoft.Data.Sqlite 8.0.29 çözümlendi.
+
+3. dotnet build sonucu
+Başarılı. Puantaj.Core, PuantajApp, PuantajLicenseGenerator ve Puantaj.Core.Tests derlendi: 0 uyarı, 0 hata.
+
+4. dotnet test sonucu ve test sayısı
+Başarılı: 22/22 test geçti, 0 başarısız, 0 atlanan. Lisans, cihaz, SQLite upsert/toplu atama, takvim, kod dönüşümü, haftalık/aylık gerçek Excel üretimi, A4/PrintArea ve şablon bütünlüğü test edildi.
+
+5. Haftalık Excel gerçek olarak üretildi mi?
+Evet. Referans olarak yalnız görünür `25.31.05.2026k` sayfası kullanıldı; çıktı tek sayfadır ve ClosedXML ile yeniden açıldı.
+
+6. Haftalık örnek dosyanın yolu ve dosya boyutu
+test-output/Haftalik_Calisma_Plani_Test.xlsx — 17.313 byte.
+
+7. Aylık Excel gerçek olarak üretildi mi?
+Evet. Aylık tek sayfalı şablondan üretildi ve ClosedXML ile yeniden açıldı. A/B/C/D/E → X, diğer geçerli kodlar aynen uygulanır; Sİ üretilmez.
+
+8. Aylık örnek dosyanın yolu ve dosya boyutu
+test-output/Puantaj_Test.xlsx — 438.072 byte.
+
+9. Haftalık A4 ayarları uygulandı mı?
+Evet. A4, yatay, 1 sayfa genişlik, otomatik yükseklik, yatay ortalama, makul kenar boşlukları ve A1:R36 PrintArea uygulandı ve test edildi.
+
+10. Aylık A4 ayarları uygulandı mı?
+Evet. A4, yatay, 1 sayfa genişlik, otomatik yükseklik, yatay ortalama, makul kenar boşlukları ve B2:AT53 PrintArea uygulandı ve test edildi.
+
+11. Haftalık Excel/PDF/Yazdır düğmeleri eklendi mi?
+Evet. Haftalık Plan ekranına “Excel Olarak Kaydet”, “PDF Olarak Kaydet” ve “Yazdır” eklendi. Haftalık Excel'de A-E harfleri X'e çevrilmez.
+
+12. Aylık Excel/PDF/Yazdır düğmeleri eklendi mi?
+Evet. Aylık Excel Oluştur ekranına “Excel Olarak Kaydet”, “PDF Olarak Kaydet” ve “Yazdır” eklendi.
+
+13. PDF’nin Windows/Excel bağımlılığı
+PDF ve yazdırma, yalnız PuantajApp Windows katmanındaki Excel COM otomasyonunu kullanır; Puantaj.Core platform bağımsızdır. Microsoft Excel yoksa anlaşılır mesaj gösterilir ve PDF akışında oluşturulan Excel dosyası korunur. macOS'ta PDF üretilmedi.
+
+14. Windows üzerinde kalan manuel testler
+WinForms ekranlarının açılması, lisans→MainForm akışı, gerçek Microsoft Excel ile görünmez PDF export, yazıcı seçim diyaloğu, COM kapanışı sonrası EXCEL.EXE kalmaması ve Excel Baskı Önizleme'de iki belgenin A4 görsel kontrolü Windows'ta yapılmalıdır.
+
+15. templates Excel hashlerinin değişmediği
+Doğrulandı. Önce/sonra hashleri aynıdır:
+Haftalık: 5c5150831e897d371a38f4b21e53aabbb16fecec163de5264f072d973ec5fe2b
+Aylık: f3818fe4122f4f28ab61345a709f491f24c13617f6492477edafe48fe088b723
+
+16. Değişen dosyalar
+Oluşturuldu: src/Puantaj.Core/Excel/ExcelPageSetup.cs, src/Puantaj.Core/Excel/WeeklyExcelExporter.cs, src/PuantajApp/ExcelInteropService.cs, tests/Puantaj.Core.Tests/OutputTests.cs, test-output/Haftalik_Calisma_Plani_Test.xlsx, test-output/Puantaj_Test.xlsx, GOREV_4_SONUC_RAPORU.txt.
+Güncellendi: src/Puantaj.Core/Puantaj.Core.csproj, MonthlyExcelExporter.cs, src/PuantajApp/WeeklyPlanControl.cs, MonthlyExportControl.cs, EmployeesControl.cs, README.md, docs/GOREV_PLANI.md.
+
+17. Commit/push/PR yapılmadığı
+Commit, push ve PR yapılmadı. Private key Git'e eklenmedi; lisans başlangıç kontrolü kaldırılmadı veya bypass edilmedi.

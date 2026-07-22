@@ -1,0 +1,149 @@
+GÖREV 6 SONUÇ RAPORU
+=====================
+
+1. Referans görsele göre yapılan UI geliştirmeleri
+--------------------------------------------------
+- 1536x1024 referans PNG özgün boyutunda incelendi.
+- Koyu üst başlık barı, sabit sol personel alanı, hafta sekmeleri, iki sütunlu çalışma alanı ve alt aylık şerit uygulandı.
+- Kurumsal açık gri/beyaz yüzeyler, ince kart kenarlıkları, Segoe UI yazı hiyerarşisi ve ölçülü durum renkleri kullanıldı.
+- Sağ üstte Kaydet, Yazdır ve Kapat eylemleri; ayrıca Ayarlar, Personeller ve Kilitli Aylar erişimleri bulunuyor.
+
+2. Gerçek çalışan ekran bölümleri
+--------------------------------
+- Anlık ad/soyad filtreli, kaydırılabilir personel listesi ve seçim vurgusu.
+- Seçili personel adı, görevi, çalışma şekli, varsa işe giriş tarihi ve aktif dönem kartı.
+- Ayın takvim haftalarını Pazartesi-Pazar oluşturan dinamik sekmeler; ay dışı günler gri/pasif.
+- Tam, eksik ve bekleyen hafta durumları.
+- SQLite'taki tüm dinamik vardiya/özel kodlardan üretilen seçim matrisi.
+- Aynı gün ikinci seçimde önceki seçimi sessizce kaldırma.
+- Varsayılan vardiya + istisnalarla haftayı oluşturma ve yeniden oluşturma.
+- Gün sonucuna çift tıklayarak dinamik listeden manuel düzenleme.
+- Aynı/başka/birden fazla personele, seçilen hedef haftaya tarih uyarlamalı kopyalama.
+- Haftalık renkli sonuç kutuları, dinamik açıklama alanı ve gerçek aylık yatay önizleme.
+- İşten Ayrıldı günü ve sonrasında siyah önizleme; iç kod gösterilmez.
+
+3. Veritabanına bağlanan fonksiyonlar
+-------------------------------------
+- Personel listeleme, arama, seçim, sıralama ve aktiflik.
+- Görev, çalışma şekli ve isteğe bağlı işe giriş tarihi için geriye uyumlu Employees migration'ı.
+- Haftalık tekli/toplu atama, kopyalama ve manuel gün güncellemesi.
+- Dinamik AssignmentCodeDefinition kayıtları ve çalışma vardiyası niteliği.
+- Ay kilidi kontrolleri ve aylık gerçek kayıt önizlemesi.
+- 100 personel listeleme/sıralama testi başarılı.
+
+4. Ayarlar sistemi
+------------------
+- Mevcut AppSettings altyapısı kullanıldı; ikinci bir ayar deposu oluşturulmadı.
+- Otel/departman, imza isim/ünvanları, logo boyutu, kenar boşlukları ve yazdırma tercihleri korunuyor.
+- Logo yükleme, canlı önizleme ve logo kaldırma eklendi.
+- Vardiya ve özel kod yönetimi aynı Ayarlar ekranına alındı.
+- Kaydedilen logo haftalık/aylık Excel'e oranı korunarak ekleniyor; PDF/yazdırma aynı Excel'i kullandığı için logoyu içeriyor.
+- Kaydedilen imza metinleri haftalık ve aylık şablonların imza bölgelerine yazılıyor.
+
+5. Ay kilitleme
+---------------
+- Kilitli ayda otomatik hafta oluşturma, yeniden oluşturma, manuel değişiklik ve kopyalama hedefi engelleniyor.
+- Kilit durumu SQLite'ta saklanıyor ve onayla kaldırılıyor.
+- Kilitli ayın Excel/PDF/yazdırma çıktısı tekrar alınabiliyor; kaynak kayıt değiştirilemiyor.
+
+6. Backup / Restore
+-------------------
+- SQLite, ayarlar, logo, dinamik kodlar, personeller, atamalar ve ay kilitleri tek ZIP'e alınıyor.
+- Lisans dosyası ZIP'e dahil edilmiyor.
+- Geri yüklemeden önce uygulama veri klasöründe otomatik tarihli güvenlik yedeği oluşturuluyor.
+- Restore öncesi yedek SQLite şeması doğrulanıyor.
+
+7. Lisans türleri
+-----------------
+- Generator ekranı yalnız “1 Yıllık Lisans” ve “Süresiz Lisans” seçeneklerini sunuyor.
+- 1 yıllık lisans bitişi başlangıç tarihinin tam bir yıl sonrası olarak imzalanıyor.
+- Süresiz lisansın ExpiresAt değeri yok; her iki tür de cihaz kimliğine ve RSA-PSS imzasına bağlı.
+- Uygulama açılışında süre doğrulaması devam ediyor.
+- Yerel hashli son çalışma zamanı kaydı, saat 12 saatten fazla geri alınmışsa açılışı engelliyor.
+- Bu koruma çevrimdışı masaüstünde mutlak değildir; yerel kayıt silinerek aşılabilir. Private key PuantajApp'e eklenmedi.
+
+8. Değişen dosyalar
+-------------------
+- README.md
+- GOREV_6_SONUC_RAPORU.txt
+- src/Puantaj.Core/Data/Employee.cs
+- src/Puantaj.Core/Data/PuantajDatabase.cs
+- src/Puantaj.Core/Planning/WeeklyPlanningService.cs (yeni)
+- src/Puantaj.Core/Planning/WeeklySelectionModel.cs (yeni)
+- src/Puantaj.Core/Excel/ExcelBranding.cs (yeni)
+- src/Puantaj.Core/Excel/WeeklyExcelExporter.cs
+- src/Puantaj.Core/Excel/MonthlyExcelExporter.cs
+- src/Puantaj.Core/Licensing/LicenseClockGuard.cs (yeni)
+- src/PuantajApp/MainForm.cs
+- src/PuantajApp/PersonnelCardControl.cs (yeni)
+- src/PuantajApp/SettingsControl.cs
+- src/PuantajApp/EmployeesControl.cs
+- src/PuantajApp/WeeklyPlanControl.cs
+- src/PuantajApp/MonthlyExportControl.cs
+- src/PuantajApp/Program.cs
+- src/PuantajLicenseGenerator/GeneratorForm.cs
+- tests/Puantaj.Core.Tests/PersonnelCardTests.cs (yeni)
+- test-output/Gorev6_Haftalik_Erhan_Durgun.xlsx (yeni)
+- test-output/Gorev6_Aylik_Erhan_Durgun_Haziran_2025.xlsx (yeni)
+
+9. Yeni testler
+---------------
+- Varsayılan vardiya + Yİ/Üİ istisnası ve dolduruldu durumu.
+- Aynı güne ikinci seçimin ilkini değiştirmesi.
+- Sıfır HT, iki HT ve aynı haftada RT/RP.
+- İlk/son hafta ay dışı günlerinin üretilmemesi.
+- Bekleyen/eksik hafta durumu.
+- Tarih uyarlamalı hafta kopyalama.
+- İşten Ayrıldı sonrasında önizleme toplamlarının dışlanması.
+- Lisans bir yıllık tarih sınırı ve saat geri alma koruması.
+- 100 personel listeleme/sıralama.
+- Gerçek Erhan Durgun veri setinden iki Excel üretme, yeniden açma, kod ve PrintArea doğrulama.
+- Önceki kilit, manuel upsert, backup/restore, dinamik kod ve exporter testleri de birlikte çalıştı.
+
+10. Build sonucu
+----------------
+- dotnet restore: başarılı.
+- Puantaj.Core: başarılı, 0 hata.
+- PuantajApp Windows hedefli derleme: başarılı, 0 hata.
+- PuantajLicenseGenerator Windows hedefli derleme: başarılı, 0 hata.
+- macOS Homebrew .NET 8 paketinde WindowsDesktop SDK bulunmadığından WinForms derlemesi depoya yazılmayan geçici resmi SDK 10.0.302 ortamıyla doğrulandı.
+
+11. Test sonucu
+---------------
+- Toplam 40 test, 40 başarılı, 0 başarısız, 0 atlanan.
+- Toplam test süresi yaklaşık 1 dakika 34 saniye.
+- Template SHA-256 değerleri değişmedi:
+  Haftalık: 5c5150831e897d371a38f4b21e53aabbb16fecec163de5264f072d973ec5fe2b
+  Aylık:    f3818fe4122f4f28ab61345a709f491f24c13617f6492477edafe48fe088b723
+
+12. Üretilen Excel örnekleri
+----------------------------
+- test-output/Gorev6_Haftalik_Erhan_Durgun.xlsx
+- test-output/Gorev6_Aylik_Erhan_Durgun_Haziran_2025.xlsx
+- Dosyalar sıfırdan büyük, ClosedXML ile yeniden açılabilir; beklenen A/X/Yİ değerleri ve PrintArea doğrulandı.
+
+13. Bilinen riskler
+-------------------
+- Haftalık referans şablon 17, aylık şablon 32 personel kapasitelidir; UI 100+ personeli gösterebilse de tek Excel şablon kapasitesi değişmedi.
+- Logo/imza hücre konumları gerçek otel örneğiyle Windows Excel baskı önizlemesinde son kez onaylanmalıdır.
+- Saat geri alma koruması çevrimdışı istemcide caydırıcıdır; tamamen kırılamaz değildir.
+- Takvim haftaları gerçek Pazartesi-Pazar aralıklarıdır; referans görseldeki Haziran 2025 gün adları gerçek takvimle tutarlı değildir.
+
+14. Windows üzerinde kalan manuel kontroller
+--------------------------------------------
+- 1366x768 ve 1920x1080, %100/%125/%150 DPI görsel kabul.
+- Personel arama, hafta sekmesi, matris, çift tık düzenleme ve çoklu kopyalama fare/klavye kabulü.
+- Gerçek logo ve uzun imza metinleriyle Excel/PDF/A4 baskı önizlemesi.
+- Başarılı/hatalı/iptal edilen PDF ve yazdırmada Task Manager üzerinden EXCEL.EXE kalmadığının kontrolü.
+- Kullanıcının önceden açık Excel belgelerinin etkilenmediğinin kontrolü. Servis yalnız kendi oluşturduğu Excel.Application örneğini kapatır.
+- Windows 10/11 font ve Unicode ikon görünümü.
+
+15. Referans görselle birebir olmayan noktalar ve teknik nedenleri
+-----------------------------------------------------------------
+- Referansın özel vektör ikonları yerine Windows/Unicode ve standart WinForms çizimleri kullanıldı; harici ikon paketi eklenmedi.
+- Web/CSS tarzı gölgeler yerine WinForms ince kenarlıkları kullanıldı.
+- Piksel ölçüleri DPI ölçeklemesine bağlı olarak birkaç piksel değişebilir; paneller düşük çözünürlükte kaydırma/yeniden boyutlama kullanır.
+- Referans görsel Haziran 2025'te 1 Haziranı Pazartesi gösteriyor; gerçek takvimde Pazar olduğundan uygulama .NET takvimini esas alır.
+- macOS üzerinde WinForms çalıştırılamadığı için gerçek uygulama/reference yan yana ekran görüntüsü doğrulaması yapılamadı.
+
+Commit, push ve PR oluşturulmadı. Template dosyaları değiştirilmedi. Private key Git'e eklenmedi.

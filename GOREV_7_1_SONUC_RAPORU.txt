@@ -1,0 +1,56 @@
+GÖREV 7.1 SONUÇ RAPORU
+======================
+
+Değişen dosyalar
+----------------
+- src/Puantaj.Core/Data/PuantajDatabase.cs
+- src/PuantajApp/EmployeesControl.cs
+- src/PuantajApp/MonthlyExportControl.cs
+- tests/Puantaj.Core.Tests/PersonnelLifecycleTests.cs
+- GOREV_7_1_SONUC_RAPORU.txt
+
+Yapılan geliştirmeler
+--------------------
+- Mevcut Employees.IsActive alanı kullanıldı; yeni tablo, arşiv veya pasif personel ekranı oluşturulmadı.
+- Günlük personel kartı ve arama varsayılan olarak yalnız aktif personelleri göstermeye devam ediyor.
+- Mevcut Personeller ekranına “Aktif Listeden Kaldır” işlemi eklendi.
+- Aynı ekrandaki “Aktif listeden kaldırılanları göster” seçeneği ile pasif kayıtlar isteğe bağlı görülebiliyor.
+- Pasif kişi seçildiğinde aynı düğme “Aktif Listeye Ekle” olarak değişiyor ve yeniden işe alım aynı Employee Id üzerinden yapılıyor.
+- Aktiflik değişikliğinde kullanıcıdan onay alınıyor ve geçmiş kayıtların silinmeyeceği açıkça belirtiliyor.
+- Personel adı, geçmiş Assignments kayıtları ve tüm veritabanı kaydı korunuyor; fiziksel silme yapılmıyor.
+- GetEmployeesForPeriod tarihsel sorgusu eklendi. Aktif personellere ek olarak, istenen dönemde ataması bulunan pasif personeli döndürüyor.
+- Aylık Excel oluşturma tarihsel sorguyu kullanıyor; böylece pasif personelin geçmiş ay puantajındaki adı ve kodları korunuyor.
+- Yeni dönem günlük seçimleri GetEmployees() varsayılan aktif filtresini kullandığı için pasif kişiler yeni plan listesine girmiyor.
+- Exporter kodu ve Excel dönüşüm kuralları değiştirilmedi; yalnız exporter'a verilen personel kümesi tarihsel döneme uygun hale getirildi.
+
+Test sonuçları
+--------------
+- Personelin ilk durumda aktif listede görünmesi doğrulandı.
+- Aktif listeden kaldırma doğrulandı.
+- Pasif personelin varsayılan seçim listesinden çıkması doğrulandı.
+- Aktif personel arama sonucunda pasif kişinin bulunmaması doğrulandı.
+- Geçmiş dönem sorgusunda pasif personelin adının korunması doğrulandı.
+- Ataması olmayan sonraki dönemde pasif kişinin tarihsel listeye dahil edilmemesi doğrulandı.
+- Geçmiş aylık Excel dosyasında pasif personel adının C7 hücresinde bulunması doğrulandı.
+- Aynı personelin tekrar aktif yapılınca varsayılan listeye dönmesi doğrulandı.
+- Yeni test: 2 başarılı, 0 başarısız.
+- Tüm test paketi: 42 başarılı, 0 başarısız, 0 atlanan.
+- Toplam test süresi: yaklaşık 1 dakika 50 saniye.
+
+Build sonucu
+------------
+- dotnet restore başarılı.
+- Puantaj.Core derlemesi başarılı: 0 uyarı, 0 hata.
+- PuantajApp net8.0-windows derlemesi başarılı: 0 uyarı, 0 hata.
+- WinForms derlemesi macOS'ta depoya eklenmeyen geçici resmi SDK 10.0.302 ortamıyla doğrulandı.
+- Template Excel dosyaları değiştirilmedi.
+- Haftalık template SHA-256: 5c5150831e897d371a38f4b21e53aabbb16fecec163de5264f072d973ec5fe2b
+- Aylık template SHA-256: f3818fe4122f4f28ab61345a709f491f24c13617f6492477edafe48fe088b723
+- Commit, push veya PR oluşturulmadı.
+
+Bilinen riskler
+---------------
+- Pasif personel yalnız ataması bulunan tarihsel dönemde aylık çıktıya eklenir. Ataması olmayan bir ayda boş personel satırı üretilmez.
+- Yeniden işe alınan kişi aynı Employee Id ile devam eder; eski ve yeni çalışma dönemleri aynı kişinin tarihçesi olarak görülür.
+- Aktif/pasif düğmelerinin gerçek Windows DPI ve klavye erişilebilirliği Windows üzerinde manuel kontrol edilmelidir.
+- Haftalık eski Excel ekranı aktif personel kümesini kullanır. Tarihsel personel korumasının ana teslim noktası aylık puantaj ve aylık Excel çıktısıdır.

@@ -1,0 +1,64 @@
+GÖREV 5 SONUÇ RAPORU
+=====================
+
+Değişen dosyalar
+-----------------
+- Yeni: src/Puantaj.Core/Data/AssignmentCodeDefinition.cs
+- Yeni: src/Puantaj.Core/Data/AssignmentCodeResolver.cs
+- Güncellendi: src/Puantaj.Core/Data/PuantajDatabase.cs
+- Güncellendi: src/Puantaj.Core/Excel/MonthlyExcelExporter.cs
+- Güncellendi: src/Puantaj.Core/Excel/WeeklyExcelExporter.cs
+- Güncellendi: src/PuantajApp/WeeklyPlanControl.cs
+- Güncellendi: src/PuantajApp/MonthlyExportControl.cs
+- Güncellendi: src/PuantajApp/ShiftSettingsControl.cs
+- Güncellendi: tests/Puantaj.Core.Tests/MvpTests.cs
+- Güncellendi: tests/Puantaj.Core.Tests/OutputTests.cs
+- Güncellendi: README.md ve docs/GOREV_PLANI.md
+
+Yeni testler
+------------
+- Keyfi `Z9` vardiyasının tanımlanıp SQLite'a atanması.
+- Ayın 1. gününde İşten Ayrıldı: 1–31 siyah ve içeriksiz.
+- Ayın 9. gününde İşten Ayrıldı: 9–31 siyah ve içeriksiz.
+- Ayın 31. gününde İşten Ayrıldı: yalnız 31 siyah ve içeriksiz.
+- İşten Ayrıldı kullanılmadığında normal vardiyanın X olması.
+- Haftalık çıktıda İşten Ayrıldı seçilen günden Pazar'a siyah ve içeriksiz.
+- Excel hücrelerinde `F` veya `İşten Ayrıldı` metninin görünmemesi.
+- Tam test sonucu: 24 başarılı, 0 başarısız, 0 atlanan.
+- Tam solution build: başarılı, 0 uyarı, 0 hata.
+
+Senaryolar
+----------
+- Çalışma kodları artık ana uygulama akışında sabit A–E listesine bağlı değildir.
+- Shifts tablosu geriye uyumlu bırakıldı ve Description alanıyla migrate edildi.
+- Her tanımda Code, Description, saatler ve IsWorkShift bulunur.
+- IsWorkShift=true olan herhangi bir kod aylıkta X olur; örneğin Z9 da X olur.
+- “İşten Ayrıldı” davranışı koda değil Türkçe açıklamaya bağlıdır. Kod F, İA veya başka bir değer olabilir.
+- Haftalık seçim listeleri veritabanından gelir ve kullanıcıya açıklamayı gösterir.
+- Vardiya Ayarları ekranı yeni kod/tanım/saat/vardiya niteliği ekleyip güncelleyebilir.
+- İşten ayrılma hücresi dahil ay sonuna kadar içerik temizlenir ve tam siyah doldurulur.
+- Siyah hücreler boş olduğu için COUNTIF toplam/formül/istatistiklerine girmez.
+
+Excel örnekleri
+---------------
+- test-output/Puantaj_Isten_Ayrilma_9.xlsx
+- test-output/Haftalik_Isten_Ayrilma.xlsx
+- Önceki örnekler korunur: test-output/Puantaj_Test.xlsx ve Haftalik_Calisma_Plani_Test.xlsx.
+- Örnekler ClosedXML ile yeniden açılarak siyah dolgu, boş içerik ve kod sızıntısı açısından doğrulandı.
+
+Risk analizi
+------------
+- Özel davranış açıklama-temellidir; “İşten Ayrıldı” açıklamasının farklı yazılması davranışı devre dışı bırakır. Türkçe büyük/küçük harf farkı desteklenir, yazım hatası desteklenmez.
+- Mevcut aylık şablon 32, haftalık referans şablon 17 personel kapasitelidir; bu görev kapasiteyi değiştirmedi.
+- Mevcut kategori toplam sütunları şablona bağlıdır; yeni normal izin türleri için ayrıca toplam kolonu oluşmaz.
+- İşten ayrılma sonrası veritabanında eski/güncel atamalar bulunabilir; exporter bunları yazmaz ve siyah alan toplam dışı kalır.
+
+Geriye dönük uyumluluk
+----------------------
+- Mevcut A/B/C/D/E varsayılan kayıtları migration/seed ile korunur ve aylıkta X üretmeye devam eder.
+- HT, RT, RP, ÜZ, Üİ, Yİ, Aİ ve G tanımları/açıklamaları korunur.
+- Eski veritabanına Description sütunu otomatik eklenir ve mevcut kodlar açıklamalarla doldurulur.
+- Assignments tablosu ve EmployeeId+WorkDate unique kuralı değişmedi.
+- Eski exporter çağrıları opsiyonel tanım parametresi sayesinde çalışmaya devam eder.
+- Lisans akışı değiştirilmedi veya bypass edilmedi.
+- Commit, push ve PR yapılmadı; private key Git'e eklenmedi.

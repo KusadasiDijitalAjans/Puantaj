@@ -1,0 +1,87 @@
+GÖREV 1 SONUÇ RAPORU
+=====================
+
+1. İNCELENEN EXCEL DOSYALARI
+- templates/HAFTALIK ÇALIŞMA PLANI 2026.xlsx
+- templates/HAZİRAN    2025 PUANTAJ -.xlsx
+
+2. EXCEL SAYFALARININ İSİMLERİ
+Haftalık dosya (26 sayfa):
+13.19.05.2026.; 20.26.05.2026; 27.03.05.2026; 04.10.05.2026;
+11.17.05.2026; 18.24.05.2026.K; 11.24.05.2026.M; 25.31.05.2026k;
+25.31.05.2026; 01.07.06.2026.M; 01.07.06.2026.k; 08.14.07.2026 M;
+08.14.06.2026.K; 15.21.06.2026 K; 15.21.06.2026.M;
+22.28..06.2026.M (); 22.28.06.2026.k; 29.05.07.2026 k;
+29.05.07.2026.M; 06.12.07.2026.M; 06.12.07.2026K;
+13.19.07.2026.m; 13.19.07.2026. k; 20.26.07.2026 k;
+20.26.07.2026 m; Sayfa1 (gizli).
+
+Aylık dosya (1 sayfa):
+HAZİRAN .2025 PUANTAJ
+
+Not: Yukarıdaki görünümde baştaki/sondaki boşluklar okunabilirlik için kırpılmıştır;
+teknik belgede sayfa adları kod biçiminde özgün halleriyle verilmiştir.
+
+3. TESPİT EDİLEN FORMÜL SAYISI
+- Haftalık dosya: 3 formül kaydı.
+- Aylık dosya: 669 formül kaydı (32 paylaşımlı formül kökü,
+  587 paylaşımlı devam kaydı, 50 normal formül).
+- Toplam: 672 formül kaydı.
+
+4. TESPİT EDİLEN BİRLEŞİK HÜCRE SAYISI
+- Haftalık dosya: 822 birleşik alan.
+- Aylık dosya: 5 birleşik alan.
+- Toplam: 827 birleşik alan.
+
+5. TESPİT EDİLEN ÇALIŞMA VE İZİN KODLARI
+- Haftalık gün hücrelerinde gözlenen: A, B, C, D, E, G, HT, RT, RP,
+  Üİ, Aİ, R.
+- Haftalık lejantta ayrıca tanımlı: ÜZ, Yİ.
+- Aylık başlık/formüllerde: X, G, HT, RT, Mİ, Üİ/Sİ, RP, Yİ, ÜZ,
+  DZ, GR.
+- Aylık veri alanında fiilen gözlenen: X, HT, R.
+
+6. OLUŞTURULAN/GÜNCELLENEN BELGELER
+- docs/PROJE_KAPSAMI.md
+- docs/EXCEL_ANALIZI.md
+- docs/DONUSUM_KURALLARI.md
+- docs/GOREV_PLANI.md
+- README.md (güncellendi)
+- GOREV_1_SONUC_RAPORU.txt
+
+Temel klasörler doğrulandı/oluşturuldu: docs/, src/, tests/, templates/.
+
+7. KESİNLEŞEN DÖNÜŞÜM KURALLARI
+- Haftalık otel, departman, ad-soyad ve görev alanlarının aylık eşleri vardır.
+- Haftalık gün, gerçek takvim tarihine göre aylık E:AI sütunlarındaki 1–31
+  alanına yerleşir; seçilen ay dışındaki tarihler alınmaz.
+- HT, RT, RP ve Yİ kodlarının iki dosyada aynı anlamlı hedefleri vardır.
+- Aylık AJ çalışma toplamı şablonda X ve G adetlerinin toplamıdır.
+- Aylık kişi toplamları AJ:AS; günlük kod özetleri 41–50; özet toplamı
+  40. satırdadır.
+- Personel sırası kalıcı anahtar değildir; güvenli bir uygulama içi personel
+  kimliği gerekir.
+
+8. BELİRSİZ KALAN KONULAR
+- A/B/C/D/E vardiyalarının aylık X'e dönüşüp dönüşmediği.
+- G, R ve Aİ kodlarının kesin anlamı/hedefi.
+- Üİ başlığına karşı Sİ sayan formüller ve ÜZ satırında Üİ sayılması.
+- R kodunun toplam dışı bırakılması.
+- Aynı personel/tarih çakışmasında öncelik.
+- Yazımı değişen personelin güvenli eşleştirme yöntemi ve sicil numarası.
+- 32 personel kapasitesi aşımı; 28/29/30 günlük ayların görünümü.
+- Haftalık günlük imzalar ile aylık tek imza alanının ilişkisi.
+- K/k ve M/m sayfa eklerinin resmi anlamı.
+- Haftalık dosyadaki hatalı/karma tarih metinlerinde yetkili doğruluk kaynağı.
+
+9. KOD YAZILMADIĞININ TEYİDİ
+C# solution, uygulama kodu, lisans kodu veya test kodu yazılmadı; NuGet paketi
+kurulmadı. src/ ve tests/ yalnız temel boş klasörlerdir. Geçici analiz aracı
+proje dışında /private/tmp altında kullanıldı ve görev sonunda kaldırıldı.
+
+10. EXCEL DOSYALARININ DEĞİŞTİRİLMEDİĞİNİN TEYİDİ
+İki Excel yalnız salt-okunur ZIP/Open XML analiziyle incelendi; açılıp yeniden
+kaydedilmedi ve içerikleri değiştirilmedi.
+
+11. GIT İŞLEMLERİ TEYİDİ
+Commit, push ve PR yapılmadı.

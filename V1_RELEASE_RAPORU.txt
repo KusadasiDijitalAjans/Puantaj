@@ -1,0 +1,263 @@
+================================================================
+PUANTAJ V1.0.0 — SON HAZIRLIK VE RELEASE RAPORU
+================================================================
+Tarih: 2026-07-22
+Ortam: macOS (Darwin, arm64). Bu makinede WinForms (net8.0-windows) hedefi
+       derlenemiyor — Windows Desktop SDK/workload bu ortamda kurulu değil
+       (canlı olarak bu oturumda tekrar doğrulandı, bkz. Bölüm 3).
+Görev sırasında kullanıcı açık talimatla şunu netleştirdi: "Windows üzerinde
+manuel kurulum ve kullanım testlerini DURDUR... Fiziksel Windows kurulum,
+lisans aktivasyonu ve uçtan uca kullanım testleri kullanıcı tarafından
+gerçekleştirilecek." Bu nedenle Bölüm 5'teki fiziksel kurulum/aktivasyon/
+kullanım testleri bu oturumda YAPILMADI ve raporun ilgili maddelerinde
+"Kullanıcı tarafından yapılacak" olarak işaretlendi.
+
+----------------------------------------------------------------
+1) YAPILAN İŞLEMLER
+----------------------------------------------------------------
+
+A) Production RSA anahtar çifti
+   - Yeni bir RSA-4096 anahtar çifti openssl ile üretildi (PKCS8/SubjectPublicKeyInfo
+     PEM formatında — mevcut ImportFromPem/ExportSubjectPublicKeyInfoPem akışıyla
+     birebir uyumlu).
+   - Özel anahtar YALNIZCA secrets/production.private.pem dosyasında saklanıyor;
+     bu klasör zaten .gitignore içinde ("secrets/" ve "*.private.pem" desenleriyle
+     çift koruma altında) ve dosya izinleri chmod 600 ile kısıtlandı
+     (git check-ignore ile doğrulandı).
+   - Açık (public) anahtar YALNIZCA src/PuantajApp/PublicKeyProvider.cs içine
+     gömüldü. Geliştirme anahtarı (secrets/development.private.pem) bu sabitten
+     tamamen çıkarıldı; artık üretim dağıtımında hiçbir şekilde kullanılmıyor,
+     yalnızca yerel geliştirme/test amaçlı dosya sisteminde kalmaya devam ediyor.
+   - PuantajLicenseGenerator (GeneratorForm.cs/Program.cs) hiçbir private key'i
+     kaynak koduna GÖMMÜYOR — private key her zaman kullanıcının diyalogdan seçtiği
+     bir dosya yolundan (PrivateKeyPath) okunuyor. Bu nedenle "private key
+     kesinlikle uygulamaya veya Setup paketine eklenmesin" şartı, mimarinin
+     kendisi gereği zaten sağlanıyor; bu maddeyle ilgili kod değişikliği
+     gerekmedi, yalnızca doğrulandı (bkz. Bölüm 2).
+
+B) License Generator uyumluluk doğrulaması
+   - LicenseGenerationService, RsaLicenseSigner ve LicenseValidator koduna
+     bakıldı: hiçbiri anahtar boyutuna veya belirli bir anahtara bağımlı değil
+     (RSA.ImportFromPem / RSA.Create() jenerik). Eksik/bozuk bir şey bulunmadı,
+     bu nedenle Generator'da kod değişikliği YAPILMADI.
+   - Uçtan uca doğrulama BU OTURUMDA canlı olarak çalıştırıldı (geçici, secrets/
+     dosyasına bağımlı olduğu için commit edilmeyen bir test dosyasıyla):
+     production private key ile 1 yıllık VE sınırsız lisans üretildi, embedded
+     production public key ile doğrulandı, yanlış cihaz kodu reddedildi, imza
+     bozulması reddedildi. Sonuç: 1/1 test BAŞARILI (ayrıntı Bölüm 5).
+   - Kalıcı, gizli-anahtar-bağımsız iki otomatik test eklendi (Bölüm 4).
+
+C) Windows Release build hazırlığı
+   - PuantajApp.csproj'a Version/AssemblyVersion/FileVersion=1.0.0 ve
+     PuantajLicenseGenerator ile aynı self-contained/single-file publish
+     ayarları (RuntimeIdentifier=win-x64, SelfContained=true,
+     PublishSingleFile=true) eklendi — daha önce yalnızca LicenseGenerator'da
+     vardı, artık her iki proje de tutarlı.
+   - setup/Puantaj.iss: Inno Setup 6 kurulum betiği eklendi (Setup.exe'yi
+     PuantajApp'in self-contained publish çıktısından üretir).
+   - setup/build-release.ps1: Windows'ta tek komutla hem iki projeyi publish
+     eden hem de Inno Setup ile Setup.exe'yi derleyen PowerShell betiği eklendi.
+   - Bu iki dosya bu oturumda ÇALIŞTIRILAMADI (Inno Setup ve WinForms derlemesi
+     Windows gerektirir); yalnızca hazırlandı. Ayrıntı ve gerekli Windows adımları
+     Bölüm 3 ve 6'da.
+
+D) Version
+   - Puantaj.Core.csproj, PuantajApp.csproj, PuantajLicenseGenerator.csproj
+     üçünde de <Version>1.0.0</Version> ayarlandı (PuantajApp/Generator ayrıca
+     AssemblyVersion/FileVersion=1.0.0.0).
+   - LicenseConstants.CurrentVersion (lisans ŞEMA versiyonu — uygulama sürümünden
+     farklı bir kavram) kasıtlı olarak DEĞİŞTİRİLMEDİ; bunu değiştirmek mevcut/
+     geçmiş lisans uyumluluğunu etkiler ve görev kapsamında istenmedi.
+
+E) Testler
+   - Tüm Puantaj.Core.Tests paketi çalıştırıldı: 52/52 BAŞARILI (bkz. Bölüm 5).
+
+----------------------------------------------------------------
+2) PRODUCTION ANAHTAR BİLGİSİ (private key içeriği YOK)
+----------------------------------------------------------------
+- Algoritma:            RSA
+- Anahtar boyutu:        4096 bit (openssl ile doğrulandı: "Private-Key: (4096 bit, 2 primes)")
+- Private key formatı:   PKCS8 PEM ("-----BEGIN PRIVATE KEY-----")
+- Public key formatı:    SubjectPublicKeyInfo PEM ("-----BEGIN PUBLIC KEY-----")
+- Private key konumu:    secrets/production.private.pem (git dışı, chmod 600)
+- Private key SHA-256:   76d93b87e08e04cb25e44e4b74d3023c795ddce2312100740d01115d86e2878c
+                         (dosyanın kendisinin hash'i — bu bir bütünlük parmak izidir,
+                         özel anahtarın içeriğini hiçbir şekilde ifşa etmez.)
+- Public key DER SHA-256: caa4ae09f3065262ed41414af809000c45d66be8feb45afe1746cf49bea8a3c9
+                         (src/PuantajApp/PublicKeyProvider.cs içine gömülü anahtarla
+                         eşleşir — ProductionPublicKeyTests.EmbeddedPublicKeyIsAtLeastRsa4096
+                         testiyle her derlemede otomatik doğrulanır.)
+- Public key konumu:     src/PuantajApp/PublicKeyProvider.cs (yalnızca burada, başka hiçbir yerde gömülü değil)
+- Private key ASLA burada yazılmadı ve hiçbir dosyaya/loga basılmadı.
+
+GÜVENLİ SAKLAMA NOTU: secrets/production.private.pem şu anda geliştirme
+makinesindeki mevcut convention'a uygun şekilde (development.private.pem ile
+aynı yöntemle) git dışı ve chmod 600 olarak duruyor. Gerçek üretim kullanımı
+için bu dosyanın EK OLARAK offline/güvenli bir ortama (parola yöneticisi,
+şifreli USB, donanım güvenlik modülü vb.) yedeklenmesi ve bu makine dışında
+hiçbir yere kopyalanmaması önerilir — bu adım otomatikleştirilemeyecek bir
+operasyonel karardır, bu oturumda yapılmadı.
+
+----------------------------------------------------------------
+3) BUILD SONUCU
+----------------------------------------------------------------
+- Puantaj.Core:           BAŞARILI (dotnet build, macOS).
+- Puantaj.Core.Tests:      BAŞARILI, 52/52 test yeşil (macOS).
+- PuantajApp (Release):    BAŞARISIZ — bu oturumda canlı olarak tekrar denendi:
+                            "Microsoft.NET.Sdk.WindowsDesktop.targets projesi
+                            bulunamadı" (MSB4019). Bu makinede WindowsDesktop
+                            SDK/workload kurulu değil; net8.0-windows/WinForms
+                            hedefi bu ortamda derlenemiyor. Kod tarafında hiçbir
+                            eksik yok — bu saf bir ortam kısıtı.
+- PuantajLicenseGenerator (Release): Aynı nedenle BAŞARISIZ, aynı hata mesajıyla
+                            canlı olarak doğrulandı.
+- ÖNEMLİ NOT — stale (bayat) yapı artığı: src/PuantajLicenseGenerator/bin/obj
+  altında Release/net8.0-windows/win-x64 klasöründe daha önceden üretilmiş
+  (bu oturuma ait OLMAYAN) bir PuantajLicenseGenerator.exe bulundu — bu
+  makinede canlı build denemesi az önce başarısız olduğu için bu dosyanın
+  bu oturumda üretilmediği kesin. Muhtemelen ayrı bir Windows ortamında
+  üretilip bu klasöre kopyalanmış. Bu dosya DOĞRULANMAMIŞ ve GÜVENİLMEZ
+  kabul edilmelidir; V1.0.0 sürüm bilgisini içermiyor (versiyon bu oturumda
+  eklendi) ve yeniden derlenmeden dağıtılmamalıdır. Silinmedi (kullanıcının
+  başka bir işine ait olabileceği ihtimaline karşı dokunulmadı) ama resmi
+  release olarak KULLANILMAMALI.
+- Windows'ta gerçek build için gereken komut (setup/build-release.ps1 içinde
+  de yer alıyor):
+    dotnet publish src\PuantajApp\PuantajApp.csproj -c Release
+    dotnet publish src\PuantajLicenseGenerator\PuantajLicenseGenerator.csproj -c Release
+
+----------------------------------------------------------------
+4) EKLENEN/DEĞİŞTİRİLEN DOSYALAR
+----------------------------------------------------------------
+- src/PuantajApp/PublicKeyProvider.cs — geliştirme açık anahtarı, yeni üretim
+  RSA-4096 açık anahtarıyla değiştirildi; yorum tamamen güncellendi.
+- src/PuantajApp/PuantajApp.csproj — Version/AssemblyVersion/FileVersion=1.0.0
+  + self-contained/single-file win-x64 publish ayarları eklendi.
+- src/PuantajLicenseGenerator/PuantajLicenseGenerator.csproj — Version=1.0.0.
+- src/Puantaj.Core/Puantaj.Core.csproj — Version=1.0.0.
+- tests/Puantaj.Core.Tests/LicenseGeneratorTests.cs — yeni test:
+  GeneratorAndValidatorWorkWithRsa4096KeyPair (kalıcı, secrets/ dosyasından
+  bağımsız; production anahtar BOYUTUYLA aynı güçte bir anahtarla üretim/
+  doğrulama akışının çalıştığını garanti eder).
+- tests/Puantaj.Core.Tests/ProductionPublicKeyTests.cs — yeni dosya, yeni
+  test: EmbeddedPublicKeyIsAtLeastRsa4096 (kalıcı; PublicKeyProvider.cs
+  içine gömülü anahtarın gerçekten geçerli ve ≥4096 bit olduğunu, ve
+  "secrets/production.private.pem" referansının hâlâ yorumda yer aldığını
+  her derlemede otomatik doğrular — gelecekte yanlışlıkla zayıf/geliştirme
+  anahtarına dönülmesine karşı kalıcı bir koruma).
+- secrets/production.private.pem — YENİ, git dışı (kaynak kodu DEĞİL,
+  yalnızca yerel gizli anahtar dosyası).
+- setup/Puantaj.iss — YENİ, Inno Setup kurulum betiği.
+- setup/build-release.ps1 — YENİ, Windows release build PowerShell betiği.
+- .gitignore — "dist/" (Inno Setup çıktı klasörü) eklendi.
+
+Not: Geçici bir doğrulama test dosyası (ScratchProductionKeyVerification.cs)
+bu oturum sırasında oluşturulup production anahtarının uçtan uca çalıştığı
+kanıtlandıktan sonra SİLİNDİ — secrets/production.private.pem'e bağımlı
+olduğu için kalıcı test paketinde tutulmadı (kalıcı testler yukarıda
+listelenen iki secret-bağımsız testtir).
+
+----------------------------------------------------------------
+5) TEST SONUÇLARI
+----------------------------------------------------------------
+
+Otomatik testler (Puantaj.Core.Tests, macOS'ta çalıştırıldı):
+  Toplam: 52   Başarılı: 52   Başarısız: 0   Atlanan: 0
+  (Önceki QA turundaki 50 teste ek olarak bu turda 2 yeni test eklendi.)
+
+License Generator uçtan uca doğrulaması (geçici test, bu oturumda çalıştırıldı
+ve sonrasında silindi — sonuç burada belgeleniyor):
+  - Production private key ile 1 yıllık lisans üretimi: BAŞARILI
+  - Production public key ile doğrulama: BAŞARILI (IsValid=true)
+  - Sınırsız (lifetime) lisans üretimi ve doğrulaması: BAŞARILI
+  - Yanlış cihaz kodu ile doğrulama: DOĞRU ŞEKİLDE reddedildi (DeviceMismatch)
+  - İmza bozulmuş lisans ile doğrulama: DOĞRU ŞEKİLDE reddedildi
+
+Fiziksel Windows testleri — KULLANICI TARAFINDAN YAPILACAK (bu oturumda
+yapılmadı; kullanıcının açık talimatı üzerine macOS'ta denenmedi):
+  [ ] Kurulum (Setup.exe)
+  [ ] İlk açılış
+  [ ] Lisans aktivasyonu
+  [ ] Personel ekleme/düzenleme
+  [ ] Haftalık plan
+  [ ] Aylık Excel
+  [ ] PDF
+  [ ] Yazdırma
+  [ ] Ay kilitleme
+  [ ] Yedekleme
+  [ ] Geri yükleme
+  Öneri: Bu liste, önceki QA_V1_DUZELTME_RAPORU.txt'de tarif edilen uçtan uca
+  kabul testiyle birebir aynıdır; kullanıcı setup/build-release.ps1 ile
+  ürettiği Setup.exe'yi temiz bir Windows makinesinde kurup bu listeyi
+  işaretleyerek ilerleyebilir.
+
+----------------------------------------------------------------
+6) SETUP.EXE VE LICENSEGENERATOR.EXE YOLU
+----------------------------------------------------------------
+Bu oturumda ÜRETİLEMEDİ (macOS'ta WinForms derlenemiyor). Windows'ta
+setup\build-release.ps1 çalıştırıldığında oluşacak yollar:
+
+  LicenseGenerator.exe:
+    src\PuantajLicenseGenerator\bin\Release\net8.0-windows\win-x64\publish\PuantajLicenseGenerator.exe
+
+  Setup.exe:
+    dist\Puantaj_Setup_v1.0.0.exe
+
+(PuantajApp'in kendi self-contained exe'si de ayrıca şurada oluşur, Setup.exe
+onu paketler: src\PuantajApp\bin\Release\net8.0-windows\win-x64\publish\PuantajApp.exe)
+
+----------------------------------------------------------------
+7) BİLİNEN SON RİSKLER
+----------------------------------------------------------------
+1. Windows build hiç canlı olarak doğrulanmadı (yalnızca macOS'ta hata
+   mesajı seviyesinde ortam kısıtı teyit edildi). setup/build-release.ps1
+   ve setup/Puantaj.iss ilk kez gerçek bir Windows makinesinde çalıştırıldığında
+   beklenmeyen bir hata çıkma ihtimali (ör. Inno Setup sürüm farkı, yol
+   uzunluğu, antivirüs engeli) teorik olarak vardır — bu betikler bu
+   oturumda test edilemedi.
+2. Fiziksel kurulum/aktivasyon/uçtan uca kullanım testleri (Bölüm 5) henüz
+   yapılmadı; kullanıcı tarafından yapılacak.
+3. secrets/production.private.pem şu an yalnızca bu geliştirme makinesinde,
+   development anahtarıyla aynı düzeyde (git-dışı + chmod 600) korunuyor.
+   Gerçek üretim kullanımı için ayrıca offline/güvenli bir yedekleme
+   (donanım güvenlik modülü, şifreli USB, parola yöneticisi vb.) önerilir;
+   bu, bu oturumda yapılmadı.
+4. src/PuantajLicenseGenerator/bin ve obj altındaki eski (stale) Release/
+   win-x64 exe artıkları hâlâ diskte duruyor (bkz. Bölüm 3) — silinmedi,
+   ama yeni bir Windows derlemesiyle üzerine yazılana kadar YANLIŞLIKLA
+   dağıtılmamalı.
+5. Önceki QA_V1_DUZELTME_RAPORU.txt'de listelenen kapsam-dışı riskler
+   (senkron Excel/COM işlemleri, loglama altyapısı yokluğu, restore
+   yedeklerinin birikmesi, İ/ı normalizasyonu, wmic bağımlılığı vb.) bu
+   turda da ele alınmadı — bu görevin kapsamı yalnızca production anahtar,
+   License Generator doğrulaması, Windows release hazırlığı ve versiyon
+   ile sınırlıydı.
+
+----------------------------------------------------------------
+8) V1.0.0 YAYIN İÇİN UYGUNLUK DEĞERLENDİRMESİ
+----------------------------------------------------------------
+KOD VE ANAHTAR HAZIRLIĞI AÇISINDAN: HAZIR.
+  - Production RSA-4096 anahtar çifti üretildi, açık anahtar PuantajApp'e
+    gömüldü, özel anahtar hiçbir dağıtım paketine dahil değil ve yalnızca
+    License Generator tarafından dosya yolundan okunuyor.
+  - License Generator'ın yeni anahtarla (1 yıllık + sınırsız + device id +
+    imza doğrulaması) tam uyumlu çalıştığı hem canlı hem kalıcı otomatik
+    testlerle kanıtlandı.
+  - Sürüm 1.0.0 olarak ayarlandı.
+  - Tüm otomatik testler (52/52) yeşil.
+  - Windows release build'i için gerekli tüm proje ayarları ve betikler
+    (setup/Puantaj.iss, setup/build-release.ps1) hazırlandı.
+
+YAYINA GEÇİŞ İÇİN EKSİK OLAN (bu oturumun kapsamı/ortamı dışında,
+KULLANICI TARAFINDAN TAMAMLANMALI):
+  a) setup/build-release.ps1'in gerçek bir Windows makinesinde çalıştırılıp
+     Setup.exe ve PuantajLicenseGenerator.exe'nin fiilen üretilmesi ve
+     hatasız derlendiğinin teyit edilmesi.
+  b) Bölüm 5'teki fiziksel kurulum → aktivasyon → personel → haftalık plan →
+     aylık Excel/PDF/yazdırma → ay kilitleme → yedekleme/geri yükleme uçtan
+     uca kabul testinin temiz bir Windows ortamında elle yürütülmesi.
+  c) secrets/production.private.pem için ek offline güvenli yedekleme kararı.
+
+SONUÇ: Kod ve anahtar tarafı V1.0.0 için hazır; yalnızca (a) ve (b)
+maddeleri kullanıcı tarafından tamamlandıktan sonra V1.0.0 yayına
+çıkarılabilir.

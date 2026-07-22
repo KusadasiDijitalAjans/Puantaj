@@ -1,0 +1,36 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Puantaj.Core", "src\Puantaj.Core\Puantaj.Core.csproj", "{504A15AA-C00A-4699-BE22-963E45778E54}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PuantajApp", "src\PuantajApp\PuantajApp.csproj", "{B84BB8D3-D00C-4373-AF5B-5793284A7E01}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PuantajLicenseGenerator", "src\PuantajLicenseGenerator\PuantajLicenseGenerator.csproj", "{049FFD17-DA8A-493C-8F71-EC44E5B88862}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Puantaj.Core.Tests", "tests\Puantaj.Core.Tests\Puantaj.Core.Tests.csproj", "{7DAFF01B-E748-4CB4-BF33-6CC7D572AA3A}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{504A15AA-C00A-4699-BE22-963E45778E54}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{504A15AA-C00A-4699-BE22-963E45778E54}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{504A15AA-C00A-4699-BE22-963E45778E54}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{504A15AA-C00A-4699-BE22-963E45778E54}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B84BB8D3-D00C-4373-AF5B-5793284A7E01}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B84BB8D3-D00C-4373-AF5B-5793284A7E01}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B84BB8D3-D00C-4373-AF5B-5793284A7E01}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B84BB8D3-D00C-4373-AF5B-5793284A7E01}.Release|Any CPU.Build.0 = Release|Any CPU
+		{049FFD17-DA8A-493C-8F71-EC44E5B88862}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{049FFD17-DA8A-493C-8F71-EC44E5B88862}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{049FFD17-DA8A-493C-8F71-EC44E5B88862}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{049FFD17-DA8A-493C-8F71-EC44E5B88862}.Release|Any CPU.Build.0 = Release|Any CPU
+		{7DAFF01B-E748-4CB4-BF33-6CC7D572AA3A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7DAFF01B-E748-4CB4-BF33-6CC7D572AA3A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7DAFF01B-E748-4CB4-BF33-6CC7D572AA3A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7DAFF01B-E748-4CB4-BF33-6CC7D572AA3A}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal

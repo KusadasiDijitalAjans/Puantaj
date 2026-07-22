@@ -1,0 +1,123 @@
+GÖREV 3 SONUÇ RAPORU
+=====================
+
+ÖZET
+Puantaj MVP kaynak kodu tamamlandı. Görev 2 lisans kontrolü korunmuştur:
+lisans doğrulanmadan MainForm oluşturulmaz. Uygulama tek otel/departman için
+%LocalAppData%\Puantaj\puantaj.db dosyasını kullanır.
+
+1. UYGULAMA DERLENDİ Mİ?
+Hayır, bu macOS ortamında dotnet komutu kurulu değildir.
+- dotnet restore: çalıştırıldı, exit 127 (dotnet: command not found)
+- dotnet build: çalıştırıldı, exit 127 (dotnet: command not found)
+- dotnet test: çalıştırıldı, exit 127 (dotnet: command not found)
+SDK kurulumu için uygulanacak komut:
+brew install --cask dotnet-sdk
+Kurulumdan sonra terminal yeniden açılıp yukarıdaki üç komut çalıştırılmalıdır.
+Kaynaklar için csproj XML ve temel C# parantez taraması başarılıdır; gerçek
+derleme başarısı iddia edilmemektedir.
+
+2. PERSONEL EKRANI ÇALIŞIYOR MU?
+Kaynak olarak tamamlandı: aktif personel listeleme, ekleme, ad düzenleme,
+pasif yapma ve yukarı/aşağı sıralama vardır. SQLite işlemlerine bağlıdır.
+WinForms macOS'ta açılamadığı için çalışma zamanı manuel doğrulaması bekliyor.
+
+3. HAFTALIK PLAN EKRANI VAR MI?
+Evet. Pazartesi başlangıcı otomatik hesaplanır; aktif personeller satır,
+Pazartesi-Pazar tarihleri sütun olarak gösterilir. Her gün hücresi geçerli
+kodlardan biriyle tek tek değiştirilebilir.
+
+4. ÇOKLU PERSONEL SEÇİMİ ÇALIŞIYOR MU?
+Kaynak olarak tamamlandı. Her satırda seçim kutusu, Tümünü Seç ve Seçimi
+Kaldır düğmeleri vardır. Windows UI manuel doğrulaması bekliyor.
+
+5. TOPLU VARDİYA ATAMA ÇALIŞIYOR MU?
+Kaynak olarak tamamlandı. Bir kod, birden fazla personel ve Pazartesi-Pazar
+arasından birden fazla gün seçilip tek işlemde uygulanır. SQLite transaction
+ve upsert kullanılır. 20 personel x 3 gün = 60 kayıt test senaryosu eklendi.
+Test SDK eksikliği nedeniyle çalıştırılamadı.
+
+6. 12 AYLIK TAKVİM ÇALIŞIYOR MU?
+Kaynak olarak tamamlandı. Açılışta sistem yılı/ayı seçilir; önceki/sonraki yıl
+ve Ocak-Aralık seçimi vardır. DateTime.DaysInMonth kullanılır. 2024 Şubat=29,
+2025 Şubat=28, Nisan=30 ve Temmuz=31 testleri eklendi.
+
+7. SQLITE KAYITLARI ÇALIŞIYOR MU?
+Kaynak olarak tamamlandı. Employees, Shifts ve Assignments tabloları açılışta
+oluşturulur. EmployeeId+WorkDate UNIQUE constraint ve ON CONFLICT UPDATE vardır.
+A-E varsayılan saatleri seed edilir ve değiştirilebilir. C bitişi 24:00,
+D başlangıcı 00:00 olarak saklanır. Gerçek SQLite testi SDK eksikliği nedeniyle
+çalıştırılamadı.
+
+8. AYLIK EXCEL ÜRETİLDİ Mİ?
+Servis ve ekran tamamlandı fakat bu ortamda örnek Excel üretilemedi. ClosedXML
+0.105.0 kullanılır. Uygulama çalışma klasöründeki templates altında adında
+PUANTAJ geçen tek gerçek .xlsx dosyasını bulur, orijinali salt okunur açar ve
+seçilen yeni yola SaveAs yapar. Tek sayfanın biçimleri/birleşimleri/ölçüleri
+korunur; personel 7-38, günler E-AI alanına yazılır. Bozuk Sİ formülleri
+üretilmez; Üİ/ÜZ/Aİ/G toplam başlık ve formülleri düzeltilir.
+
+9. A/B/C/D/E KODLARI X OLDU MU?
+Evet, AttendanceCodes.ToMonthlyCode içinde A/B/C/D/E -> X uygulanmıştır.
+HT, RT, RP, ÜZ, Üİ, Yİ, Aİ ve G aynen korunur. Sİ geçersizdir ve reddedilir.
+Bu davranış için A, E, HT, Yİ ve Sİ otomatik testleri eklendi; SDK olmadığı
+için test çalıştırıcısı sonucu alınamadı.
+
+10. OLUŞTURULAN ÖRNEK EXCEL DOSYASININ YOLU
+Örnek dosya oluşturulamadı; yol yoktur. Windows'ta kullanıcı SaveFileDialog
+ile örneğin Puantaj_Housekeeping_2026_07.xlsx yolunu seçecektir.
+
+11. TEST SONUÇLARI
+Eklenen MVP testleri:
+- A -> X
+- E -> X
+- HT aynı kalır
+- Yİ aynı kalır
+- Sİ reddedilir
+- aynı personel/tarih ikinci kayıt yerine güncellenir
+- Şubat 2024=29, Şubat 2025=28, Nisan=30, Temmuz=31
+- toplu atama tüm seçili personel ve günlere uygulanır
+Mevcut lisans testleri korunmuştur.
+Çalışan statik kontroller: tüm csproj dosyaları geçerli XML; temel parantez
+taraması başarılı; private key Git ignore kontrolü başarılı; Excel hashleri
+Görev 2 ile aynıdır.
+Çalıştırılamayan: tüm dotnet birim/entegrasyon testleri (SDK yok).
+
+12. WINDOWS ÜZERİNDE YAPILMASI GEREKEN MANUEL TESTLER
+1) dotnet restore/build/test çalıştır ve hataları gider.
+2) Lisanssız açılışta yalnız aktivasyon ekranının geldiğini doğrula.
+3) Geçerli lisansla otel/departman başlıklı MainForm'u aç.
+4) Personel ekle, düzenle, sırala, pasif yap ve yeniden başlat.
+5) Haftalık hücreyi tek tek değiştir; yeniden açınca kaldığını doğrula.
+6) 20 personel ve üç gün seçip A uygula; tüm hücreleri kontrol et.
+7) A-E saatlerini değiştirip yeniden aç; değerlerin kaldığını kontrol et.
+8) 28/29/30/31 günlük ayları seç ve gün başlıklarını kontrol et.
+9) Aylık Excel üret; Excel'de biçim, baskı, formül ve kodları kontrol et.
+10) Kaynak templates dosyalarının hashlerinin değişmediğini doğrula.
+
+13. DEĞİŞEN DOSYALAR
+Güncellendi:
+- src/Puantaj.Core/Puantaj.Core.csproj
+- src/PuantajApp/PuantajApp.csproj, Program.cs, MainForm.cs
+- tests/Puantaj.Core.Tests (global xUnit using eklendi)
+- README.md
+- docs/GOREV_PLANI.md
+Oluşturuldu:
+- src/Puantaj.Core/Data/*
+- src/Puantaj.Core/Calendar/CalendarHelper.cs
+- src/Puantaj.Core/Excel/MonthlyExcelExporter.cs
+- src/PuantajApp/PromptDialog.cs
+- src/PuantajApp/EmployeesControl.cs
+- src/PuantajApp/WeeklyPlanControl.cs
+- src/PuantajApp/ShiftSettingsControl.cs
+- src/PuantajApp/MonthlyExportControl.cs
+- tests/Puantaj.Core.Tests/MvpTests.cs
+- GOREV_3_SONUC_RAPORU.txt
+Görev 1/2 belgeleri ve lisans altyapısı silinmedi. Generator değiştirilmedi.
+
+14. GIT VE KAYNAK EXCEL TEYİDİ
+Commit, push ve PR yapılmadı. Private key Git'e eklenmedi.
+templates altındaki iki Excel değiştirilmedi veya yeniden kaydedilmedi.
+Son SHA-256:
+- Haftalık: 5c5150831e897d371a38f4b21e53aabbb16fecec163de5264f072d973ec5fe2b
+- Aylık: f3818fe4122f4f28ab61345a709f491f24c13617f6492477edafe48fe088b723
