@@ -10,6 +10,7 @@ internal sealed class PersonnelCardControl : UserControl
     private static readonly string[] Days = ["Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz"];
     private readonly PuantajDatabase _database;
     private readonly WeeklyPlanningService _planning = new();
+    private readonly MonthlySummaryService _summaryService = new();
     private readonly Func<int> _year; private readonly Func<int> _month;
     private readonly string _hotel; private readonly string _department;
     private readonly TextBox _search = new() { PlaceholderText = "Ara...", Dock = DockStyle.Top, Height = 34 };
@@ -25,7 +26,7 @@ internal sealed class PersonnelCardControl : UserControl
     private readonly Button _generateButton;
     private readonly Button _copyButton;
     private readonly DataGridView _monthly = new() { Dock = DockStyle.Fill, ReadOnly = true, AllowUserToAddRows = false, RowHeadersVisible = false, ColumnHeadersHeight = 42, BackgroundColor = Color.White };
-    private readonly Label _totals = Label("", 9, true);
+    private readonly MonthlySummaryPanel _monthlySummary = new();
     private IReadOnlyList<AssignmentCodeDefinition> _codes = [];
     private IReadOnlyList<MonthWeek> _monthWeeks = [];
     private bool _loading;
@@ -119,8 +120,7 @@ internal sealed class PersonnelCardControl : UserControl
     private Control BuildMonthly()
     {
         var card = Card(); var title = Label("AYLIK PUANTAJ ÖNİZLEMESİ", 9, true); title.Dock = DockStyle.Top; title.Height = 28; title.Padding = new Padding(8, 7, 0, 0);
-        _totals.Dock = DockStyle.Bottom; _totals.Height = 32; _totals.TextAlign = ContentAlignment.MiddleRight; _totals.Padding = new Padding(0, 0, 12, 0);
-        card.Controls.Add(_monthly); card.Controls.Add(_totals); card.Controls.Add(title); return card;
+        card.Controls.Add(_monthly); card.Controls.Add(_monthlySummary); card.Controls.Add(title); return card;
     }
 
     private void LoadEmployees()
@@ -204,7 +204,8 @@ internal sealed class PersonnelCardControl : UserControl
 
     private void RefreshMonthly()
     {
-        _monthly.Columns.Clear(); _monthly.Rows.Clear(); var employee = SelectedEmployee(); if (employee is null) return;
+        _monthly.Columns.Clear(); _monthly.Rows.Clear(); var employee = SelectedEmployee();
+        if (employee is null) { _monthlySummary.SetSummary(new MonthlySummary([], 0, 0, 0)); return; }
         var days = DateTime.DaysInMonth(_year(), _month()); _monthly.Columns.Add("Person", "Personel"); _monthly.Columns[0].Width = 145;
         for (var day = 1; day <= days; day++) { var date = new DateOnly(_year(), _month(), day); _monthly.Columns.Add($"D{day}", $"{day}\n{Days[((int)date.DayOfWeek + 6) % 7]}"); _monthly.Columns[^1].Width = 43; }
         var assignments = MonthAssignments(employee.Id); var map = assignments.ToDictionary(item => item.WorkDate, item => item.Code); var values = new object?[days + 1]; values[0] = employee.FullName;
@@ -216,7 +217,7 @@ internal sealed class PersonnelCardControl : UserControl
         }
         var rowIndex = _monthly.Rows.Add(values); ended = false;
         for (var day = 1; day <= days; day++) { var date = new DateOnly(_year(), _month(), day); if (map.TryGetValue(date, out var code) && resolver.Resolve(code).IsEmploymentEnded) ended = true; _monthly.Rows[rowIndex].Cells[day].Style.BackColor = ended ? Color.Black : code is null ? Color.White : CodeColor(resolver.Resolve(code)); }
-        var totals = _planning.CalculateTotals(assignments, _codes); _totals.Text = $"Toplam Çalışma Günü: {totals.WorkDays}     |     Toplam İzin Günü: {totals.LeaveDays}     |     Toplam Geçerli Gün: {totals.ValidDays}";
+        _monthlySummary.SetSummary(_summaryService.Calculate(assignments, _codes));
     }
 
     private void GenerateWeek()

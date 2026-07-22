@@ -77,17 +77,8 @@ public sealed class WeeklyPlanningService
 
     public PreviewTotals CalculateTotals(IEnumerable<Assignment> assignments, IReadOnlyList<AssignmentCodeDefinition> definitions)
     {
-        var resolver = new AssignmentCodeResolver(definitions);
-        var work = 0; var leave = 0; var valid = 0; var ended = false;
-        foreach (var assignment in assignments.OrderBy(item => item.WorkDate))
-        {
-            var definition = resolver.Resolve(assignment.Code);
-            if (definition.IsEmploymentEnded) ended = true;
-            if (ended) continue;
-            valid++;
-            if (definition.IsWorkShift) work++; else leave++;
-        }
-        return new(work, leave, valid);
+        var summary = new MonthlySummaryService().Calculate(assignments, definitions);
+        return new(summary.WorkDays, summary.LeaveDays, summary.ValidDays);
     }
 
     private static DateOnly Min(DateOnly left, DateOnly right) => left < right ? left : right;
