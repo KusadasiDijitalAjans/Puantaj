@@ -45,7 +45,9 @@ public sealed class PuantajDatabase
                 StartTime TEXT NULL,
                 EndTime TEXT NULL,
                 IsWorkShift INTEGER NOT NULL,
-                DisplayOrder INTEGER NOT NULL
+                DisplayOrder INTEGER NOT NULL,
+                IsActive INTEGER NOT NULL DEFAULT 1,
+                DeletedAt TEXT NULL
             );
             CREATE TABLE IF NOT EXISTS Assignments (
                 Id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -85,6 +87,7 @@ public sealed class PuantajDatabase
         command.ExecuteNonQuery();
         EnsureEmployeeDetailColumns(connection);
         EnsureDescriptionColumn(connection);
+        EnsureShiftLifecycleColumns(connection);
         SeedShifts(connection);
     }
 
@@ -197,7 +200,7 @@ public sealed class PuantajDatabase
     {
         using var connection = Open();
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT Code, StartTime, EndTime, IsWorkShift, DisplayOrder FROM Shifts ORDER BY IsWorkShift DESC, Code COLLATE NOCASE;";
+        command.CommandText = "SELECT Code, StartTime, EndTime, IsWorkShift, DisplayOrder FROM Shifts WHERE IsActive=1 ORDER BY IsWorkShift DESC, Code COLLATE NOCASE;";
         using var reader = command.ExecuteReader();
         var shifts = new List<Shift>();
         while (reader.Read())
@@ -208,11 +211,11 @@ public sealed class PuantajDatabase
         return shifts;
     }
 
-    public IReadOnlyList<AssignmentCodeDefinition> GetAssignmentCodes()
+    public IReadOnlyList<AssignmentCodeDefinition> GetAssignmentCodes(bool activeOnly = true)
     {
         using var connection = Open();
         using var command = connection.CreateCommand();
-        command.CommandText = "SELECT Code, Description, StartTime, EndTime, IsWorkShift, DisplayOrder FROM Shifts ORDER BY IsWorkShift DESC, Code COLLATE NOCASE;";
+        command.CommandText = $"SELECT Code, Description, StartTime, EndTime, IsWorkShift, DisplayOrder FROM Shifts {(activeOnly ? "WHERE IsActive=1" : string.Empty)} ORDER BY IsWorkShift DESC, Code COLLATE NOCASE;";
         using var reader = command.ExecuteReader();
         var result = new List<AssignmentCodeDefinition>();
         while (reader.Read()) result.Add(new(reader.GetString(0), reader.GetString(1), ParseTime(reader, 2), ParseTime(reader, 3), reader.GetBoolean(4), reader.GetInt32(5)));
@@ -229,7 +232,7 @@ public sealed class PuantajDatabase
             INSERT INTO Shifts (Code, Description, StartTime, EndTime, IsWorkShift, DisplayOrder)
             VALUES ($code, $description, $start, $end, $work, COALESCE((SELECT MAX(DisplayOrder)+1 FROM Shifts),1))
             ON CONFLICT(Code) DO UPDATE SET Description=excluded.Description, StartTime=excluded.StartTime,
-            EndTime=excluded.EndTime, IsWorkShift=excluded.IsWorkShift;
+            EndTime=excluded.EndTime, IsWorkShift=excluded.IsWorkShift, IsActive=1, DeletedAt=NULL;
             """, ("$code", code), ("$description", description.Trim()), ("$start", start is null ? null : FormatTime(start.Value)),
             ("$end", end is null ? null : FormatTime(end.Value)), ("$work", isWorkShift ? 1 : 0));
     }
@@ -270,7 +273,7 @@ public sealed class PuantajDatabase
         IReadOnlyDictionary<DateOnly, string> assignments, bool allowOverwrite)
     {
         if (to < from) throw new ArgumentOutOfRangeException(nameof(to));
-        var definitions = GetAssignmentCodes();
+        var definitions = GetAssignmentCodes(false);
         var resolver = new AssignmentCodeResolver(definitions);
         var previousEmploymentEnd = allowOverwrite
             ? GetAssignments(from, to).Where(item => item.EmployeeId == employeeId && resolver.Resolve(item.Code).IsEmploymentEnded)
@@ -330,18 +333,15 @@ public sealed class PuantajDatabase
         foreach (var code in existing.Where(code => !requested.Contains(code)))
         {
             if (DefaultAssignmentCodes.Contains(code)) throw new InvalidOperationException($"Varsayılan '{code}' kodu silinemez.");
-            using var check = connection.CreateCommand(); check.Transaction = transaction;
-            check.CommandText = "SELECT COUNT(*) FROM Assignments WHERE Code=$code;"; check.Parameters.AddWithValue("$code", code);
-            if (Convert.ToInt32(check.ExecuteScalar(), CultureInfo.InvariantCulture) > 0)
-                throw new InvalidOperationException($"'{code}' kodu puantaj kayıtlarında kullanıldığı için silinemez.");
-            Execute(connection, "DELETE FROM Shifts WHERE Code=$code;", transaction, ("$code", code));
+            Execute(connection, "UPDATE Shifts SET IsActive=0, DeletedAt=$deleted WHERE Code=$code;", transaction,
+                ("$deleted", DateTimeOffset.UtcNow.ToString("O")), ("$code", code));
         }
         foreach (var item in normalized)
             Execute(connection, """
                 INSERT INTO Shifts (Code, Description, StartTime, EndTime, IsWorkShift, DisplayOrder)
                 VALUES ($code,$description,$start,$end,$work,COALESCE((SELECT MAX(DisplayOrder)+1 FROM Shifts),1))
                 ON CONFLICT(Code) DO UPDATE SET Description=excluded.Description, StartTime=excluded.StartTime,
-                    EndTime=excluded.EndTime, IsWorkShift=excluded.IsWorkShift;
+                    EndTime=excluded.EndTime, IsWorkShift=excluded.IsWorkShift, IsActive=1, DeletedAt=NULL;
                 """, transaction, ("$code", item.Code), ("$description", item.Description.Trim()),
                 ("$start", item.StartTime is null ? null : FormatTime(item.StartTime.Value)),
                 ("$end", item.EndTime is null ? null : FormatTime(item.EndTime.Value)), ("$work", item.IsWorkShift ? 1 : 0));
@@ -416,7 +416,7 @@ public sealed class PuantajDatabase
         ValidateMonth(year, month); EnsureMonthUnlocked(year, month);
         var monthFrom = new DateOnly(year, month, 1); var monthTo = monthFrom.AddMonths(1).AddDays(-1);
         using var connection = Open(); using var transaction = connection.BeginTransaction();
-        var pattern = new Dictionary<int, string>();
+        var pattern = new Dictionary<DayOfWeek, string>();
         using (var command = connection.CreateCommand())
         {
             command.Transaction = transaction;
@@ -426,16 +426,21 @@ public sealed class PuantajDatabase
             while (reader.Read())
             {
                 var date = DateOnly.ParseExact(reader.GetString(0), "yyyy-MM-dd", CultureInfo.InvariantCulture);
-                pattern[date.DayNumber - sourceMonday.DayNumber] = reader.GetString(1);
+                pattern[date.DayOfWeek] = reader.GetString(1);
             }
         }
         if (pattern.Count == 0) throw new InvalidOperationException("Kaynak haftada kopyalanacak puantaj kaydı bulunamadı.");
+        var definitions = GetAssignmentCodes(false).ToDictionary(item => item.Code, StringComparer.OrdinalIgnoreCase);
+        var fallback = pattern.Values.Where(code => definitions.TryGetValue(code, out var definition) && definition.IsWorkShift)
+            .GroupBy(code => code, StringComparer.OrdinalIgnoreCase).OrderByDescending(group => group.Count())
+            .ThenBy(group => group.Key, StringComparer.OrdinalIgnoreCase).Select(group => group.Key).FirstOrDefault();
+        fallback ??= definitions.Values.Where(item => item.IsWorkShift).OrderBy(item => item.DisplayOrder).Select(item => item.Code).FirstOrDefault();
+        if (fallback is null && pattern.Count < 7) throw new InvalidOperationException("Aktif bir çalışma vardiyası bulunamadı.");
         Execute(connection, "DELETE FROM Assignments WHERE EmployeeId=$employee AND WorkDate >= $from AND WorkDate <= $to;", transaction,
             ("$employee", employeeId), ("$from", FormatDate(monthFrom)), ("$to", FormatDate(monthTo)));
         for (var date = monthFrom; date <= monthTo; date = date.AddDays(1))
         {
-            var offset = ((date.DayNumber - sourceMonday.DayNumber) % 7 + 7) % 7;
-            if (!pattern.TryGetValue(offset, out var code)) continue;
+            var code = pattern.GetValueOrDefault(date.DayOfWeek, fallback!);
             Execute(connection, "INSERT INTO Assignments (EmployeeId,WorkDate,Code,UpdatedAt) VALUES ($employee,$date,$code,$updated);", transaction,
                 ("$employee", employeeId), ("$date", FormatDate(date)), ("$code", code), ("$updated", DateTimeOffset.UtcNow.ToString("O")));
         }
@@ -707,6 +712,15 @@ public sealed class PuantajDatabase
         reader.Close();
         if (!exists) Execute(connection, "ALTER TABLE Shifts ADD COLUMN Description TEXT NOT NULL DEFAULT ''; ");
         Execute(connection, "UPDATE Shifts SET Description = CASE Code WHEN 'HT' THEN 'Hafta Tatili' WHEN 'RT' THEN 'Resmî Tatil' WHEN 'RP' THEN 'Raporlu' WHEN 'ÜZ' THEN 'Ücretsiz İzin' WHEN 'Üİ' THEN 'Ücretli İzin' WHEN 'Yİ' THEN 'Yıllık İzin' WHEN 'Aİ' THEN 'Alacak İzin' WHEN 'G' THEN 'Görevli' ELSE 'Vardiya ' || Code END WHERE Description='';");
+    }
+
+    private static void EnsureShiftLifecycleColumns(SqliteConnection connection)
+    {
+        using var check = connection.CreateCommand(); check.CommandText = "PRAGMA table_info(Shifts);";
+        using var reader = check.ExecuteReader(); var columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        while (reader.Read()) columns.Add(reader.GetString(1)); reader.Close();
+        if (!columns.Contains("IsActive")) Execute(connection, "ALTER TABLE Shifts ADD COLUMN IsActive INTEGER NOT NULL DEFAULT 1;");
+        if (!columns.Contains("DeletedAt")) Execute(connection, "ALTER TABLE Shifts ADD COLUMN DeletedAt TEXT NULL;");
     }
 
     private static void EnsureEmployeeDetailColumns(SqliteConnection connection)

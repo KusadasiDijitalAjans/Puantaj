@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
+using System.Diagnostics;
 
 namespace PuantajApp;
 
@@ -29,6 +30,7 @@ internal sealed class ExcelInteropService
         dynamic? application = null;
         dynamic? workbooks = null;
         dynamic? workbook = null;
+        var stopwatch = Stopwatch.StartNew();
         try
         {
             application = CreateExcel();
@@ -41,6 +43,7 @@ internal sealed class ExcelInteropService
         finally
         {
             CloseExcel(application, workbooks, workbook);
+            stopwatch.Stop(); Debug.WriteLine($"Puantaj Excel COM/PDF: {stopwatch.Elapsed.TotalSeconds:F2} sn");
         }
     }
 
@@ -51,6 +54,7 @@ internal sealed class ExcelInteropService
         dynamic? workbook = null;
         dynamic? dialogs = null;
         dynamic? printDialog = null;
+        var stopwatch = Stopwatch.StartNew();
         try
         {
             application = CreateExcel();
@@ -68,6 +72,7 @@ internal sealed class ExcelInteropService
             Release(printDialog);
             Release(dialogs);
             CloseExcel(application, workbooks, workbook);
+            stopwatch.Stop(); Debug.WriteLine($"Puantaj Excel COM/yazdırma hazırlığı: {stopwatch.Elapsed.TotalSeconds:F2} sn");
         }
     }
 
@@ -85,10 +90,6 @@ internal sealed class ExcelInteropService
         Release(workbook);
         Release(workbooks);
         Release(application);
-        GC.Collect();
-        GC.WaitForPendingFinalizers();
-        GC.Collect();
-        GC.WaitForPendingFinalizers();
     }
 
     private static void Release(object? value)
