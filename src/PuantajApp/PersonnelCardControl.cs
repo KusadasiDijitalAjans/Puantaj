@@ -35,7 +35,6 @@ internal sealed class PersonnelCardControl : UserControl
     private IReadOnlyList<MonthWeek> _monthWeeks = [];
     private bool _loading;
     private bool _editing;
-    public event EventHandler? CreateMonthRequested;
 
     public PersonnelCardControl(PuantajDatabase database, Func<int> year, Func<int> month, string hotel, string department)
     {
@@ -43,7 +42,7 @@ internal sealed class PersonnelCardControl : UserControl
         _editButton = Button("✎  Düzenle", (_, _) => BeginEdit());
         _clearButton = Button("▣  Tümünü Temizle", (_, _) => ClearSelectionsWithConfirmation());
         _generateButton = Button("✓  Haftayı Oluştur", (_, _) => GenerateWeek(), Color.FromArgb(13, 104, 220), Color.White);
-        _generateMonthButton = Button("▣  Ayı Oluştur", (_, _) => CreateMonthRequested?.Invoke(this, EventArgs.Empty), Color.White, Color.FromArgb(18, 142, 73));
+        _generateMonthButton = Button("▣  Ayı Oluştur", (_, _) => GenerateMonth(), Color.White, Color.FromArgb(18, 142, 73));
         _copyButton = Button("▣  Haftayı Kopyala", (_, _) => CopyWeek());
         _copyMonthButton = Button("▣  Ayı Kopyala", (_, _) => CopyMonth());
         Dock = DockStyle.Fill; BackColor = Color.FromArgb(246, 247, 249); Font = new Font("Segoe UI", 9);
@@ -59,7 +58,14 @@ internal sealed class PersonnelCardControl : UserControl
 
     public void ReloadAll()
     {
+        var employeeId = SelectedEmployee()?.Id;
+        var selectedWeek = SelectedWeek()?.ActiveFrom;
         _codes = _database.GetAssignmentCodes(); BuildMatrix(); LoadEmployees(); LoadMonth();
+        if (employeeId is not null)
+            _employees.SelectedItem = (_employees.DataSource as IEnumerable<Employee>)?.FirstOrDefault(item => item.Id == employeeId);
+        if (selectedWeek is not null)
+            _weeks.SelectedTab = _weeks.TabPages.Cast<TabPage>().FirstOrDefault(page => page.Tag is MonthWeek week && week.ActiveFrom == selectedWeek);
+        RefreshPerson();
     }
 
     public void ReloadSettings()
@@ -196,7 +202,7 @@ internal sealed class PersonnelCardControl : UserControl
         _loading = true; _matrix.Columns.Clear();
         _matrix.ColumnHeadersDefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleCenter;
         _matrix.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(249, 250, 252); _matrix.EnableHeadersVisualStyles = false;
-        _matrix.GridColor = Color.FromArgb(224, 228, 234); _matrix.RowTemplate.Height = 32; _matrix.ColumnHeadersHeight = 38;
+        _matrix.GridColor = Color.FromArgb(224, 228, 234); _matrix.RowTemplate.Height = 28; _matrix.ColumnHeadersHeight = 34;
         _matrix.Columns.Add(new DataGridViewTextBoxColumn { Name = "Definition", HeaderText = "Vardiyalar / Günler", FillWeight = 155, MinimumWidth = 190, ReadOnly = true });
         for (var index = 0; index < 7; index++) _matrix.Columns.Add(new DataGridViewCheckBoxColumn { Name = $"Day{index}", HeaderText = Days[index], FillWeight = 100, MinimumWidth = 68, FlatStyle = FlatStyle.Standard });
         _matrix.Rows.Clear();
@@ -304,10 +310,35 @@ internal sealed class PersonnelCardControl : UserControl
 
     private void ClearSelectionsWithConfirmation()
     {
+        var employee = SelectedEmployee(); var week = SelectedWeek();
+        if (employee is null || week is null) return;
+        var persisted = _database.GetAssignments(week.ActiveFrom, week.ActiveTo).Any(item => item.EmployeeId == employee.Id);
         var hasSelection = _matrix.Rows.Cast<DataGridViewRow>().SelectMany(row => row.Cells.Cast<DataGridViewCell>().Skip(1)).Any(cell => Convert.ToBoolean(cell.Value));
-        if (hasSelection && MessageBox.Show("Ekrandaki tüm seçimler temizlenecek. Devam etmek istiyor musunuz?", "Tümünü Temizle",
+        if ((hasSelection || persisted) && MessageBox.Show("Aktif haftanın kayıtları kalıcı olarak temizlenecek. Devam etmek istiyor musunuz?", "Tümünü Temizle",
             MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
-        ClearMatrix(); if (_defaultShift.Items.Count > 0) _defaultShift.SelectedIndex = 0;
+        try
+        {
+            _database.ClearWeekAssignments(employee.Id, week.ActiveFrom, week.ActiveTo);
+            _editing = false; if (_defaultShift.Items.Count > 0) _defaultShift.SelectedIndex = 0; RefreshPerson();
+        }
+        catch (Exception exception) { MessageBox.Show(exception.Message, "Hafta temizlenemedi", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
+    }
+
+    private void GenerateMonth()
+    {
+        var employee = SelectedEmployee(); var week = SelectedWeek();
+        if (employee is null || week is null) return;
+        var monthFrom = new DateOnly(_year(), _month(), 1); var monthTo = monthFrom.AddMonths(1).AddDays(-1);
+        var existingOutsideSource = _database.GetAssignments(monthFrom, monthTo)
+            .Any(item => item.EmployeeId == employee.Id && (item.WorkDate < week.ActiveFrom || item.WorkDate > week.ActiveTo));
+        if (existingOutsideSource && MessageBox.Show("Seçili ayın diğer haftalarındaki mevcut kayıtlar, aktif haftanın deseniyle değiştirilecek. Devam edilsin mi?",
+            "Ayı Oluştur", MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
+        try
+        {
+            _database.ApplyWeekPatternToMonth(employee.Id, week.Monday, week.ActiveFrom, week.ActiveTo, _year(), _month());
+            RefreshPerson();
+        }
+        catch (Exception exception) { MessageBox.Show(exception.Message, "Ay oluşturulamadı", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
     }
 
     private void CopyWeek()

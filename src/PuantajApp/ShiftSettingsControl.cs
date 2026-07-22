@@ -35,6 +35,7 @@ internal sealed class ShiftSettingsControl : UserControl
         try
         {
             _grid.EndEdit();
+            var definitions = new List<AssignmentCodeDefinition>();
             foreach (DataGridViewRow row in _grid.Rows)
             {
                 var code = row.Cells["Code"].Value?.ToString() ?? string.Empty;
@@ -42,8 +43,10 @@ internal sealed class ShiftSettingsControl : UserControl
                 var work = Convert.ToBoolean(row.Cells["Work"].Value);
                 TimeSpan? start = work ? Parse(row.Cells["Start"].Value?.ToString()) : null;
                 TimeSpan? end = work ? Parse(row.Cells["End"].Value?.ToString()) : null;
-                _database.SaveAssignmentCode(code, row.Cells["Description"].Value?.ToString() ?? string.Empty, start, end, work);
+                definitions.Add(new AssignmentCodeDefinition(code, row.Cells["Description"].Value?.ToString() ?? string.Empty,
+                    start, end, work, definitions.Count + 1));
             }
+            _database.SynchronizeAssignmentCodes(definitions);
             if (showConfirmation) MessageBox.Show("Vardiya saatleri kaydedildi.", "Puantaj", MessageBoxButtons.OK, MessageBoxIcon.Information);
             Reload();
         }
