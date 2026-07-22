@@ -290,6 +290,8 @@ internal sealed class PersonnelCardControl : UserControl
         try
         {
             _database.EnsureMonthUnlocked(_year(), _month());
+            if (_matrix.IsCurrentCellDirty) _matrix.CommitEdit(DataGridViewDataErrorContexts.Commit);
+            _matrix.EndEdit();
             var exceptions = new Dictionary<DateOnly, string>();
             for (var day = 0; day < 7; day++) foreach (DataGridViewRow row in _matrix.Rows)
                 if (Convert.ToBoolean(row.Cells[day + 1].Value) && row.Tag is AssignmentCodeDefinition definition) exceptions[week.Monday.AddDays(day)] = definition.Code;

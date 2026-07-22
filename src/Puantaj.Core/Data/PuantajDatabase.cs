@@ -300,6 +300,9 @@ public sealed class PuantajDatabase
             if (!allowOverwrite && Convert.ToInt32(existing.ExecuteScalar(), CultureInfo.InvariantCulture) > 0)
                 throw new InvalidOperationException("Bu hafta daha önce oluşturuldu. Değişiklik yapmak için Düzenle butonunu kullanın.");
         }
+        if (allowOverwrite)
+            Execute(connection, "DELETE FROM Assignments WHERE EmployeeId=$employee AND WorkDate >= $from AND WorkDate <= $to;",
+                transaction, ("$employee", employeeId), ("$from", FormatDate(from)), ("$to", FormatDate(to)));
         foreach (var assignment in assignments)
         {
             using var validation = connection.CreateCommand(); validation.Transaction = transaction;
