@@ -44,6 +44,8 @@ internal static class ExcelBranding
     {
         if (!string.IsNullOrWhiteSpace(name)) sheet.Cell(nameCell).Value = name;
         if (!string.IsNullOrWhiteSpace(title)) sheet.Cell(titleCell).Value = title;
-        sheet.Cell(nameCell).Style.Alignment.WrapText = true; sheet.Cell(titleCell).Style.Alignment.WrapText = true;
+        sheet.Cell(nameCell).Style.Alignment.WrapText = false; sheet.Cell(titleCell).Style.Alignment.WrapText = false;
+        sheet.Cell(nameCell).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Left;
+        sheet.Cell(titleCell).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Left;
     }
 }

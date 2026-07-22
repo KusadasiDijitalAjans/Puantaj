@@ -93,7 +93,7 @@ internal sealed class PersonnelCardControl : UserControl
             var assignments = _database.GetAssignments(week.Monday, week.Sunday).Where(item => item.EmployeeId == employee.Id).ToList();
             var settings = _database.GetSettings();
             await Task.Run(() => new WeeklyExcelExporter().Export(template, temp, _hotel, _department, week.Monday,
-                [employee], assignments, _codes, settings));
+                [employee], assignments, _database.GetAssignmentCodes(false), settings));
             await ExcelInteropService.RunStaAsync(() => new ExcelInteropService().PrintWithDialog(temp));
         }
         catch (Exception exception) { MessageBox.Show(exception.Message, "Yazdırma hatası", MessageBoxButtons.OK, MessageBoxIcon.Error); }

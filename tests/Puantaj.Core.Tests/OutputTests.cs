@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Globalization;
 using ClosedXML.Excel;
 using Puantaj.Core.Data;
 using Puantaj.Core.Excel;
@@ -7,6 +8,59 @@ namespace Puantaj.Core.Tests;
 
 public sealed class OutputTests
 {
+    [Fact]
+    public void OfficialMonthlyCodeMapIsCentralizedAndRejectsUnknownCodes()
+    {
+        var definitions = new[]
+        {
+            new AssignmentCodeDefinition("F", "Vardiya F", null, null, true, 1),
+            new AssignmentCodeDefinition("Aİ", "Mazeret İzni", null, null, false, 2),
+            new AssignmentCodeDefinition("G", "Görevli", null, null, false, 3),
+            new AssignmentCodeDefinition("DZ", "Devamsızlık", null, null, false, 4),
+            new AssignmentCodeDefinition("?", "Bilinmeyen", null, null, false, 5)
+        };
+        var mapper = new AttendanceExcelCodeMapper(definitions);
+        Assert.Equal("X", mapper.Map("F")); Assert.Equal("Mİ", mapper.Map("Aİ"));
+        Assert.Equal("GR", mapper.Map("G")); Assert.Equal("DZ", mapper.Map("DZ"));
+        Assert.Throws<InvalidOperationException>(() => mapper.Map("?"));
+    }
+
+    [Theory]
+    [InlineData(2025, 2, 28)]
+    [InlineData(2024, 2, 29)]
+    [InlineData(2026, 4, 30)]
+    [InlineData(2026, 7, 31)]
+    public void OfficialTemplatePreservesLayoutTotalsAndSignatureAreas(int year, int month, int days)
+    {
+        var root = FindProjectRoot(); var template = MonthlyExcelExporter.FindMonthlyTemplate(Path.Combine(root, "templates"));
+        var output = Path.Combine(Path.GetTempPath(), $"official-{year}-{month}-{Guid.NewGuid():N}.xlsx");
+        var settings = AppSettings.CreateDefault("Otel", "Housekeeper") with
+        {
+            HumanResourcesManager = "İnsan Kaynakları Müdürü",
+            HumanResourcesTitle = "Human Resources Manager",
+            DepartmentManager = "Departman Müdürü",
+            DepartmentManagerTitle = "Department Head",
+            GeneralManager = "Genel Müdür",
+            GeneralManagerTitle = "General Manager"
+        };
+        var employee = new Employee(1, "Test Personel", true, 1, DateTimeOffset.UtcNow, "Housekeeper", "", null);
+        var assignments = Enumerable.Range(1, days).Select(day => new Assignment(day, 1, new DateOnly(year, month, day), day % 7 == 0 ? "HT" : "A", DateTimeOffset.UtcNow)).ToArray();
+        try
+        {
+            new MonthlyExcelExporter().Export(template, output, "Otel", "Housekeeper", year, month, [employee], assignments, settings: settings);
+            using var workbook = new XLWorkbook(output); var sheet = workbook.Worksheets.Single();
+            Assert.Equal($"{CultureInfo.GetCultureInfo("tr-TR").DateTimeFormat.GetMonthName(month).ToUpper(new CultureInfo("tr-TR"))}   {year}   PUANTAJ", sheet.Cell("E5").GetString());
+            Assert.Equal("Housekeeper", sheet.Cell("D7").GetString()); Assert.Equal("Mİ", sheet.Cell("AM6").GetString());
+            Assert.Equal("DZ", sheet.Cell("AR6").GetString()); Assert.Equal("GR", sheet.Cell("AS6").GetString());
+            Assert.Equal("DZ-DEVAMSIZLIK", sheet.Cell("D49").GetString()); Assert.Equal("GR-GÖREVLİ", sheet.Cell("D50").GetString());
+            Assert.False(sheet.Cell("E52").Style.Alignment.WrapText); Assert.False(sheet.Cell("AC52").Style.Alignment.WrapText); Assert.False(sheet.Cell("AS52").Style.Alignment.WrapText);
+            Assert.InRange(sheet.Column(3).Width, 21.8d, 22.1d); Assert.InRange(sheet.Column(4).Width, 17.5d, 17.8d);
+            Assert.Equal(1, sheet.PageSetup.PagesWide); Assert.Equal(XLPageOrientation.Landscape, sheet.PageSetup.PageOrientation);
+            for (var day = days + 1; day <= 31; day++) Assert.True(sheet.Cell(6, 4 + day).IsEmpty());
+        }
+        finally { if (File.Exists(output)) File.Delete(output); }
+    }
+
     [Fact]
     public void Weekly_and_monthly_samples_are_created_reopenable_and_do_not_change_templates()
     {

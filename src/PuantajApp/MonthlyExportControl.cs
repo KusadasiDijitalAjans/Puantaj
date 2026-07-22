@@ -57,7 +57,7 @@ internal sealed class MonthlyExportControl : UserControl
         var to = new DateOnly(year, month, DateTime.DaysInMonth(year, month));
         var employees = _database.GetEmployeesForPeriod(from, to);
         var assignments = _database.GetAssignments(from, to);
-        var codes = _database.GetAssignmentCodes();
+        var codes = _database.GetAssignmentCodes(false);
         var settings = _database.GetSettings();
         read.Stop(); Debug.WriteLine($"Puantaj veri okuma/model: {read.Elapsed.TotalSeconds:F2} sn");
         return Task.Run(() =>

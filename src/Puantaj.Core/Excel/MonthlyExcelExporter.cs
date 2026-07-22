@@ -63,10 +63,13 @@ public sealed class MonthlyExcelExporter
             employeeRows[employee.Id] = row;
             sheet.Cell(row, 2).Value = index + 1;
             sheet.Cell(row, 3).Value = employee.FullName;
+            sheet.Cell(row, 4).Value = employee.Position;
             WriteEmployeeFormulas(sheet, row);
         }
 
-        var resolver = new AssignmentCodeResolver(definitions ?? LegacyDefinitions());
+        var allDefinitions = definitions ?? LegacyDefinitions();
+        var resolver = new AssignmentCodeResolver(allDefinitions);
+        var mapper = new AttendanceExcelCodeMapper(allDefinitions);
         var ended = assignments.Where(a => resolver.Resolve(a.Code).IsEmploymentEnded)
             .GroupBy(a => a.EmployeeId).ToDictionary(g => g.Key, g => g.Min(a => a.WorkDate));
         foreach (var assignment in assignments)
@@ -74,7 +77,9 @@ public sealed class MonthlyExcelExporter
             if (assignment.WorkDate.Year != year || assignment.WorkDate.Month != month ||
                 !employeeRows.TryGetValue(assignment.EmployeeId, out var row)) continue;
             if (ended.TryGetValue(assignment.EmployeeId, out var endDate) && assignment.WorkDate >= endDate) continue;
-            sheet.Cell(row, FirstDayColumn + assignment.WorkDate.Day - 1).Value = resolver.ToMonthlyValue(assignment.Code);
+            var cell = sheet.Cell(row, FirstDayColumn + assignment.WorkDate.Day - 1);
+            var value = mapper.Map(assignment.Code); cell.Value = value;
+            if (value == "HT") cell.Style.Fill.BackgroundColor = XLColor.Yellow;
         }
         foreach (var pair in ended.Where(pair => pair.Value.Year == year && pair.Value.Month == month && employeeRows.ContainsKey(pair.Key)))
             for (var day = pair.Value.Day; day <= days; day++) Blackout(sheet.Cell(employeeRows[pair.Key], FirstDayColumn + day - 1));
@@ -83,7 +88,12 @@ public sealed class MonthlyExcelExporter
         WriteDailySummaryFormulas(sheet, days);
         ExcelBranding.ApplyMonthly(sheet, settings);
         ExcelPageSetup.ApplyA4(sheet, "B2:AT53", XLPageOrientation.Landscape);
-        workbook.SaveAs(outputPath);
+        workbook.SaveAs(outputPath, new SaveOptions
+        {
+            GenerateCalculationChain = false,
+            ConsolidateConditionalFormatRanges = false,
+            ConsolidateDataValidationRanges = false
+        });
         ExcelPageSetup.EnsureSavedA4(outputPath);
         return outputPath;
     }
@@ -121,8 +131,8 @@ public sealed class MonthlyExcelExporter
 
     private static void WriteEmployeeFormulas(IXLWorksheet sheet, int row)
     {
-        sheet.Cell(row, 36).FormulaA1 = $"COUNTIF(E{row}:AI{row},\"X\")+COUNTIF(E{row}:AI{row},\"G\")";
-        var totals = new[] { (37, "HT"), (38, "RT"), (39, "Aİ"), (40, "Üİ"), (41, "RP"), (42, "Yİ"), (43, "ÜZ"), (45, "G") };
+        sheet.Cell(row, 36).FormulaA1 = $"COUNTIF(E{row}:AI{row},\"X\")";
+        var totals = new[] { (37, "HT"), (38, "RT"), (39, "Mİ"), (40, "Üİ"), (41, "RP"), (42, "Yİ"), (43, "ÜZ"), (44, "DZ"), (45, "GR") };
         foreach (var (column, code) in totals)
             sheet.Cell(row, column).FormulaA1 = $"COUNTIF(E{row}:AI{row},\"{code}\")";
     }
@@ -132,27 +142,26 @@ public sealed class MonthlyExcelExporter
         sheet.Cell("AJ6").Value = "X";
         sheet.Cell("AK6").Value = "HT";
         sheet.Cell("AL6").Value = "RT";
-        sheet.Cell("AM6").Value = "Aİ";
+        sheet.Cell("AM6").Value = "Mİ";
         sheet.Cell("AN6").Value = "Üİ";
         sheet.Cell("AO6").Value = "RP";
         sheet.Cell("AP6").Value = "Yİ";
         sheet.Cell("AQ6").Value = "ÜZ";
-        sheet.Cell("AR6").Clear(XLClearOptions.Contents);
-        sheet.Cell("AS6").Value = "G";
+        sheet.Cell("AR6").Value = "DZ";
+        sheet.Cell("AS6").Value = "GR";
 
         var labels = new[]
         {
             (41, "X-ÇALIŞAN"), (42, "HT-HAFTA TATİLİ"), (43, "RT-RESMİ TATİL"),
-            (44, "Aİ-ALACAK İZİN"), (45, "Üİ-ÜCRETLİ İZİN"), (46, "RP-RAPOR"),
-            (47, "Yİ-YILLIK İZİN"), (48, "ÜZ-ÜCRETSİZ İZİN"), (50, "G-GÖREVLİ")
+            (44, "Mİ-MAZERET İZNİ"), (45, "Üİ-ÜCRETLİ İZİN"), (46, "RP-RAPOR"),
+            (47, "Yİ-YILLIK İZİN"), (48, "ÜZ-ÜCRETSİZ İZİN"), (49, "DZ-DEVAMSIZLIK"), (50, "GR-GÖREVLİ")
         };
         foreach (var (row, label) in labels) sheet.Cell(row, 4).Value = label;
-        sheet.Cell(49, 4).Clear(XLClearOptions.Contents);
     }
 
     private static void WriteDailySummaryFormulas(IXLWorksheet sheet, int days)
     {
-        var summary = new[] { (41, "X"), (42, "HT"), (43, "RT"), (44, "Aİ"), (45, "Üİ"), (46, "RP"), (47, "Yİ"), (48, "ÜZ"), (50, "G") };
+        var summary = new[] { (41, "X"), (42, "HT"), (43, "RT"), (44, "Mİ"), (45, "Üİ"), (46, "RP"), (47, "Yİ"), (48, "ÜZ"), (49, "DZ"), (50, "GR") };
         for (var day = 1; day <= 31; day++)
         {
             var column = FirstDayColumn + day - 1;
