@@ -1,4 +1,4 @@
-# Puantaj V1.0.1 - Windows release build script
+# Puantaj V1.0.2 - Windows release build script
 # Bu betik YALNIZCA gerçek bir Windows makinesinde çalıştırılmalıdır (.NET 8 SDK + Inno Setup 6 kurulu olmalı).
 # macOS/Linux üzerinde WinForms (net8.0-windows) hedefi derlenemediği için burada çalıştırılamaz.
 #
@@ -8,7 +8,7 @@
 # Üretilenler:
 #   src\PuantajApp\bin\Release\net8.0-windows\win-x64\publish\PuantajApp.exe
 #   src\PuantajLicenseGenerator\bin\Release\net8.0-windows\win-x64\publish\PuantajLicenseGenerator.exe
-#   dist\Puantaj_Setup_v1.0.1.exe
+#   dist\Puantaj_Setup_v1.0.2.exe
 
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
@@ -34,7 +34,7 @@ try {
     Write-Host ""
     Write-Host "Tamamlandı:"
     Write-Host "  LicenseGenerator: src\PuantajLicenseGenerator\bin\Release\net8.0-windows\win-x64\publish\PuantajLicenseGenerator.exe"
-    Write-Host "  Setup:            dist\Puantaj_Setup_v1.0.1.exe"
+    Write-Host "  Setup:            dist\Puantaj_Setup_v1.0.2.exe"
 }
 finally {
     Pop-Location

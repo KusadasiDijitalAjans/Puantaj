@@ -1,5 +1,6 @@
 using Puantaj.Core.Data;
 using Puantaj.Core.Excel;
+using System.Diagnostics;
 
 namespace PuantajApp;
 
@@ -37,8 +38,10 @@ internal sealed class MonthlyExportControl : UserControl
     private async Task RunExclusive(Func<Task> action)
     {
         _create.Enabled = _pdf.Enabled = _print.Enabled = false;
+        var previous = _selection.Text; _selection.Text = "Hazırlanıyor…";
+        var stopwatch = Stopwatch.StartNew();
         try { await action(); }
-        finally { _create.Enabled = _pdf.Enabled = _print.Enabled = true; }
+        finally { stopwatch.Stop(); Debug.WriteLine($"Puantaj dışa aktarma toplam: {stopwatch.Elapsed.TotalSeconds:F2} sn"); _selection.Text = previous; _create.Enabled = _pdf.Enabled = _print.Enabled = true; }
     }
 
     public void UpdateSelection() =>
@@ -46,7 +49,7 @@ internal sealed class MonthlyExportControl : UserControl
 
     private Task<string> CreateExcelAsync(string outputPath)
     {
-        var year = _year();
+        var total = Stopwatch.StartNew(); var read = Stopwatch.StartNew(); var year = _year();
         var month = _month();
         var templatesDirectory = Path.Combine(AppContext.BaseDirectory, "templates");
         var template = MonthlyExcelExporter.FindMonthlyTemplate(templatesDirectory);
@@ -54,10 +57,15 @@ internal sealed class MonthlyExportControl : UserControl
         var to = new DateOnly(year, month, DateTime.DaysInMonth(year, month));
         var employees = _database.GetEmployeesForPeriod(from, to);
         var assignments = _database.GetAssignments(from, to);
-        var codes = _database.GetAssignmentCodes();
+        var codes = _database.GetAssignmentCodes(false);
         var settings = _database.GetSettings();
-        return Task.Run(() => new MonthlyExcelExporter().Export(template, outputPath, _hotelName, _departmentName,
-            year, month, employees, assignments, codes, settings));
+        read.Stop(); Debug.WriteLine($"Puantaj veri okuma/model: {read.Elapsed.TotalSeconds:F2} sn");
+        return Task.Run(() =>
+        {
+            var result = new MonthlyExcelExporter().Export(template, outputPath, _hotelName, _departmentName,
+                year, month, employees, assignments, codes, settings);
+            total.Stop(); Debug.WriteLine($"Puantaj Excel hazırlama+kaydetme: {total.Elapsed.TotalSeconds:F2} sn"); return result;
+        });
     }
 
     private async Task SaveExcelAsync()

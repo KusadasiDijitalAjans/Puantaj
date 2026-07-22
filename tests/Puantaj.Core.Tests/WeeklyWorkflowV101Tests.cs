@@ -183,8 +183,49 @@ public sealed class WeeklyWorkflowV101Tests : IDisposable
         Assert.All(result.Where(item => item.WorkDate.DayOfWeek == DayOfWeek.Sunday), item => Assert.Equal("RT", item.Code));
     }
 
+    [Theory]
+    [InlineData(2026, 6)]
+    [InlineData(2026, 9)]
+    [InlineData(2026, 7)]
+    [InlineData(2026, 10)]
+    [InlineData(2026, 5)]
+    [InlineData(2026, 8)]
+    [InlineData(2026, 11)]
+    public void IncompleteFirstWeekUsesDayOfWeekPatternAndDominantShiftForMissingDays(int year, int month)
+    {
+        var database = CreateDatabase(); var employee = database.AddEmployee("Personel");
+        var first = _planning.GetMonthWeeks(year, month)[0];
+        var values = _planning.BuildWeek(first, "A", new Dictionary<DateOnly, string>
+        {
+            [first.ActiveFrom.AddDays(Math.Min(1, first.ActiveTo.DayNumber - first.ActiveFrom.DayNumber))] = "HT"
+        });
+        database.SaveWeekAssignments(employee, first.ActiveFrom, first.ActiveTo, values, false);
+        database.ApplyWeekPatternToMonth(employee, first.Monday, first.ActiveFrom, first.ActiveTo, year, month);
+
+        var result = database.GetAssignments(new DateOnly(year, month, 1), new DateOnly(year, month, DateTime.DaysInMonth(year, month)));
+        Assert.Equal(DateTime.DaysInMonth(year, month), result.Count);
+        Assert.All(result, item => Assert.Equal(month, item.WorkDate.Month));
+        var leaveDay = first.ActiveFrom.AddDays(Math.Min(1, first.ActiveTo.DayNumber - first.ActiveFrom.DayNumber)).DayOfWeek;
+        Assert.All(result.Where(item => item.WorkDate.DayOfWeek == leaveDay), item => Assert.Equal("HT", item.Code));
+    }
+
     [Fact]
-    public void CustomShiftDeletionIsPersistentAndReferencedShiftIsRejected()
+    public void DeletedCustomShiftIsHiddenButHistoricalAssignmentsRemainResolvable()
+    {
+        var database = CreateDatabase(); database.SaveAssignmentCode("F", "Vardiya F", TimeSpan.FromHours(7), TimeSpan.FromHours(15), true);
+        var employee = database.AddEmployee("Personel"); var historicalDate = new DateOnly(2025, 6, 10);
+        database.Assign(employee, historicalDate, "F");
+        database.SynchronizeAssignmentCodes(database.GetAssignmentCodes().Where(item => item.Code != "F").ToList());
+
+        Assert.DoesNotContain(database.GetAssignmentCodes(), item => item.Code == "F");
+        Assert.Contains(database.GetAssignmentCodes(false), item => item.Code == "F");
+        Assert.Equal("F", Assert.Single(database.GetAssignments(historicalDate, historicalDate)).Code);
+        database.SaveAssignmentCode("F", "Vardiya F Yeni", TimeSpan.FromHours(8), TimeSpan.FromHours(16), true);
+        Assert.Contains(database.GetAssignmentCodes(), item => item.Code == "F" && item.Description == "Vardiya F Yeni");
+    }
+
+    [Fact]
+    public void CustomShiftDeletionIsPersistentAndReferencedShiftIsArchived()
     {
         var database = CreateDatabase(); database.SaveAssignmentCode("F", "Vardiya F", TimeSpan.FromHours(7), TimeSpan.FromHours(15), true);
         var definitions = database.GetAssignmentCodes().Where(item => item.Code != "F").ToList();
@@ -192,8 +233,9 @@ public sealed class WeeklyWorkflowV101Tests : IDisposable
         Assert.DoesNotContain(database.GetAssignmentCodes(), item => item.Code == "F");
         database.SaveAssignmentCode("F", "Vardiya F", TimeSpan.FromHours(7), TimeSpan.FromHours(15), true);
         var employee = database.AddEmployee("Personel"); database.Assign(employee, new DateOnly(2026, 7, 1), "F");
-        Assert.Throws<InvalidOperationException>(() => database.SynchronizeAssignmentCodes(definitions));
-        Assert.Contains(database.GetAssignmentCodes(), item => item.Code == "F");
+        database.SynchronizeAssignmentCodes(definitions);
+        Assert.DoesNotContain(database.GetAssignmentCodes(), item => item.Code == "F");
+        Assert.Contains(database.GetAssignmentCodes(false), item => item.Code == "F");
     }
 
     [Fact]
