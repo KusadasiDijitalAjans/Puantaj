@@ -18,7 +18,6 @@ internal sealed class EmployeesControl : UserControl
         _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Order", HeaderText = "Sıra", Width = 60 });
         _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Name", HeaderText = "Personel Adı", AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill });
         _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Position", HeaderText = "Görevi", Width = 150 });
-        _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Pattern", HeaderText = "Çalışma Şekli", Width = 130 });
         _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Active", HeaderText = "Durum", Width = 70 });
 
         var add = Button("Personel Ekle", (_, _) => AddEmployee());
@@ -39,7 +38,7 @@ internal sealed class EmployeesControl : UserControl
     {
         _grid.Rows.Clear();
         foreach (var employee in _database.GetEmployees(!_showInactive.Checked))
-            _grid.Rows.Add(employee.Id, employee.DisplayOrder, employee.FullName, employee.Position, employee.WorkPattern, employee.IsActive ? "Aktif" : "Pasif");
+            _grid.Rows.Add(employee.Id, employee.DisplayOrder, employee.FullName, employee.Position, employee.IsActive ? "Aktif" : "Pasif");
         UpdateToggleText();
     }
 
@@ -54,9 +53,10 @@ internal sealed class EmployeesControl : UserControl
 
     private void AddEmployee()
     {
-        var name = PromptDialog.Show("Personel Ekle", "Ad Soyad:");
-        if (string.IsNullOrWhiteSpace(name)) return;
-        _database.AddEmployee(name);
+        using var dialog = new EmployeeEditDialog("Personel Ekle", string.Empty, string.Empty);
+        if (dialog.ShowDialog(this) != DialogResult.OK || string.IsNullOrWhiteSpace(dialog.EmployeeName)) return;
+        var id = _database.AddEmployee(dialog.EmployeeName);
+        _database.UpdateEmployeeDetails(id, dialog.Position, string.Empty, null);
         Changed();
     }
 
@@ -65,10 +65,10 @@ internal sealed class EmployeesControl : UserControl
         var id = SelectedId();
         if (id is null) return;
         var employee = _database.GetEmployees(false).First(item => item.Id == id.Value);
-        using var dialog = new EmployeeEditDialog(employee.FullName, employee.Position, employee.WorkPattern, employee.HireDate);
+        using var dialog = new EmployeeEditDialog("Personel Düzenle", employee.FullName, employee.Position);
         if (dialog.ShowDialog(this) != DialogResult.OK || string.IsNullOrWhiteSpace(dialog.EmployeeName)) return;
         _database.UpdateEmployee(id.Value, dialog.EmployeeName);
-        _database.UpdateEmployeeDetails(id.Value, dialog.Position, dialog.WorkPattern, dialog.HireDate);
+        _database.UpdateEmployeeDetails(id.Value, dialog.Position, employee.WorkPattern, employee.HireDate);
         Changed();
     }
 
@@ -112,40 +112,28 @@ internal sealed class EmployeeEditDialog : Form
 {
     private readonly TextBox _name = new() { Left = 150, Top = 15, Width = 250 };
     private readonly TextBox _position = new() { Left = 150, Top = 50, Width = 250 };
-    private readonly TextBox _pattern = new() { Left = 150, Top = 85, Width = 250 };
-    private readonly DateTimePicker _hireDate = new() { Left = 150, Top = 120, Width = 250, Format = DateTimePickerFormat.Short, ShowCheckBox = true };
 
     public string EmployeeName => _name.Text.Trim();
     public string Position => _position.Text.Trim();
-    public string WorkPattern => _pattern.Text.Trim();
-    public DateOnly? HireDate => _hireDate.Checked ? DateOnly.FromDateTime(_hireDate.Value.Date) : null;
 
-    public EmployeeEditDialog(string name, string position, string workPattern, DateOnly? hireDate)
+    public EmployeeEditDialog(string title, string name, string position)
     {
-        Text = "Personel Düzenle";
+        Text = title;
         StartPosition = FormStartPosition.CenterParent;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MinimizeBox = false;
         MaximizeBox = false;
-        ClientSize = new Size(420, 210);
+        ClientSize = new Size(420, 140);
 
         _name.Text = name;
         _position.Text = position;
-        _pattern.Text = workPattern;
-        if (hireDate is not null) { _hireDate.Checked = true; _hireDate.Value = hireDate.Value.ToDateTime(TimeOnly.MinValue); }
-        else _hireDate.Checked = false;
-
-        var ok = new Button { Text = "Kaydet", DialogResult = DialogResult.OK, Left = 245, Top = 160, Width = 75 };
-        var cancel = new Button { Text = "İptal", DialogResult = DialogResult.Cancel, Left = 326, Top = 160, Width = 75 };
+        var ok = new Button { Text = "Kaydet", DialogResult = DialogResult.OK, Left = 245, Top = 90, Width = 75 };
+        var cancel = new Button { Text = "İptal", DialogResult = DialogResult.Cancel, Left = 326, Top = 90, Width = 75 };
 
         Controls.Add(new Label { Text = "Ad Soyad:", Left = 16, Top = 18, AutoSize = true });
         Controls.Add(_name);
         Controls.Add(new Label { Text = "Görevi:", Left = 16, Top = 53, AutoSize = true });
         Controls.Add(_position);
-        Controls.Add(new Label { Text = "Çalışma şekli:", Left = 16, Top = 88, AutoSize = true });
-        Controls.Add(_pattern);
-        Controls.Add(new Label { Text = "İşe giriş tarihi:", Left = 16, Top = 123, AutoSize = true });
-        Controls.Add(_hireDate);
         Controls.Add(ok);
         Controls.Add(cancel);
         AcceptButton = ok;

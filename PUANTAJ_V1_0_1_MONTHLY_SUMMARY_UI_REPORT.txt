@@ -1,0 +1,106 @@
+PUANTAJ v1.0.1 AYLIK ÖZET UI İNCELEME RAPORU
+Tarih: 22.07.2026
+
+1. Mevcut PR ve branch adı
+PR #1: https://github.com/KusadasiDijitalAjans/Puantaj/pull/1
+Branch: fix/v1.0.1-weekly-ui-and-workflow
+
+2. Referans görselin doğrulanan tam dosya yolu
+/Users/erhandurgun/Downloads/Aylik_Puantaj_Onizlemesi.png
+Dosya doğrulandı: PNG, 1746x901, yaklaşık 985 KB.
+
+3. Referans görsel inceleme özeti
+Yalnız görselin en altındaki aylık özet şeridi incelendi. Referansta kartlar tek satırda; solda kategori renginde ikon, sağda küçük kalın başlık ve büyük kalın sayı, açık pastel zemin, ince renkli border ve yuvarlatılmış köşe kullanıyor. Son Toplam Geçerli Gün kartı lacivert ve daha belirgin. Sıfır kategoriler örnekte yer almıyor.
+
+4. Değiştirilen dosyalar
+- src/Puantaj.Core/Planning/MonthlySummaryService.cs (yeni)
+- src/Puantaj.Core/Planning/WeeklyPlanningService.cs
+- src/PuantajApp/MonthlySummaryPanel.cs (yeni)
+- src/PuantajApp/PersonnelCardControl.cs
+- tests/Puantaj.Core.Tests/MonthlySummaryTests.cs (yeni)
+- PUANTAJ_V1_0_1_MONTHLY_SUMMARY_UI_REPORT.txt (yeni)
+
+5. Her dosyada yapılan değişiklik
+- MonthlySummaryService: mevcut Assignment ve AssignmentCodeDefinition verilerinden kategori bazlı, sıralı ve sıfırları ayıklanmış özet üretir.
+- WeeklyPlanningService: mevcut PreviewTotals API'si aynı sonucu yeni tek hesaplama kaynağından alır.
+- MonthlySummaryPanel: tek satırlı responsive kart yerleşimi ve kaynak sızdırmayan özel çizim kontrolü.
+- PersonnelCardControl: eski Label footer kaldırılıp yeni panel mevcut RefreshMonthly akışına bağlandı; aylık tablo kodu değiştirilmedi.
+- MonthlySummaryTests: kategori, izin, sıfır, İşten Ayrıldı, sıra ve UI kaynak sözleşmesi regresyonları.
+
+6. Eski alt barın nasıl kaldırıldığı
+_totals Label alanı, 32 px footer kurulumu ve sabit "Toplam Çalışma/İzin/Geçerli Gün" metni kaldırıldı. Yerine aynı DockStyle.Bottom konumunda veri varsa 76 px, veri yoksa 0 px olan MonthlySummaryPanel bağlandı. Kullanılmayan eski footer kontrolü bırakılmadı.
+
+7. Yeni dinamik kutucuk yapısı
+Her görünür MonthlySummaryItem için özel çizimli bir kart oluşturulur. Kart; semantik sembol ikon, kategori başlığı ve büyük gün sayısı içerir. 8 px köşe yarıçapı, pastel arka plan ve kategori renginde 1 px border kullanır. Toplam Geçerli Gün border'ı 1,5 px ile vurgulanır. Harici ikon paketi veya yeni NuGet bağımlılığı eklenmedi.
+
+8. Desteklenen kategoriler
+Çalışma Günü, Hafta Tatili, Resmî Tatil, Raporlu, Ücretli İzin, Yıllık İzin, Ücretsiz İzin, Alacak/Mazeret İzni, Görevli, mevcut tanımlardaki diğer dinamik izin/özel durumlar, Toplam İzin Günü ve Toplam Geçerli Gün. İşten Ayrıldı mevcut kurala göre kesme işaretidir ve kart olarak gösterilmez.
+
+9. Çalışma Günü hesaplama kuralı
+Kod harfine bakılmaz. AssignmentCodeDefinition.IsWorkShift=true olan bütün dinamik vardiyalar tek Çalışma Günü kategorisinde sayılır. HT, RT, izinler, Görevli ve İşten Ayrıldı çalışma gününe girmez.
+
+10. Toplam İzin Günü hesaplama kuralı
+RP/Raporlu, ÜZ/Ücretsiz İzin, Üİ/Ücretli İzin, Yİ/Yıllık İzin, Aİ/Alacak veya Mazeret İzni ve mevcut tanım açıklamasında Türkçe "İzin" ya da "İzni" bulunan dinamik izinler toplanır. HT, RT, Görevli, çalışma vardiyaları ve İşten Ayrıldı dahil edilmez.
+
+11. Toplam Geçerli Gün hesaplama kuralı
+Mevcut kronolojik kural korunur: seçili ay kayıtları tarih sırasıyla sayılır; İşten Ayrıldı günü ve sonraki kayıtlar geçerli güne katılmaz. HaftalıkPlanningService.CalculateTotals aynı MonthlySummaryService sonucunu kullanarak eski API ile yeni kartları tutarlı tutar.
+
+12. Sıfır değerli kategorilerin gizlenme davranışı
+Days <= 0 olan hiçbir MonthlySummaryItem için kontrol oluşturulmaz. Toplam İzin ve Toplam Geçerli kartları da yalnız değerleri sıfırdan büyükse eklenir. Sahte 0 kartı yoktur.
+
+13. Veri yok durumunun davranışı
+Seçili personel yoksa veya seçili ayda kayıt yoksa kart koleksiyonu boştur; panel görünmez ve yüksekliği 0 olur. Aylık konteynırda gereksiz footer boşluğu kalmaz.
+
+14. Kutuların gösterim sırası
+Çalışma, Hafta Tatili, Resmî Tatil, Raporlu, Ücretli İzin, Yıllık İzin, Ücretsiz İzin, Alacak/Mazeret İzni, Görevli, tanım DisplayOrder sırasındaki diğer durumlar, Toplam İzin, Toplam Geçerli. Sıfırlar atlanınca kalan sıra korunur.
+
+15. Renk ve ikon eşleştirmeleri
+Çalışma mavi/▰; Hafta Tatili turkuaz/▦; Resmî Tatil yeşil/⚑; Raporlu turuncu/▤; Ücretli İzin yeşil/✓; Yıllık İzin sarı/☂; Ücretsiz İzin açık mavi/●; Alacak İzin pembe/◷; Görevli mor/◆; Toplam İzin mor/◔; Toplam Geçerli lacivert/▦. Diğer dinamik durumlar nötr pastel kart kullanır.
+
+16. Responsive küçülme algoritması
+Panel genişliğinden 16 px yatay padding çıkarılır. Önce 8 px eşit boşluk ve 146 px tercih edilen kart genişliği denenir. Kart sayısı arttığında bütün kartlara eşit genişlik verilir. 76 px altına yaklaşılırsa boşluk 8 px'den en az 2 px'e kadar azaltılır; son genişlik kalan alan/kart sayısından hesaplanır. Wrap ve AutoScroll kapalıdır; kartlar tek satırda kalır. Resize yalnız mevcut kontrollerin Bounds değerlerini yeniden hesaplar, veritabanını sorgulamaz.
+
+17. Minimum ve maksimum kutu ölçüleri
+Tercih edilen maksimum genişlik 146 px, tasarım minimumu 76 px, sabit kart yüksekliği 66 px, panel yüksekliği padding ile 76 px. 105 px altında ikon 22 px alana ve fontlar 6,6/13 pt seviyesine kontrollü küçülür; normalde ikon alanı 30 px ve fontlar 7,5/16 pt'dir.
+
+18. Personel, ay ve yıl değişiminde yenileme davranışı
+Yeni panel mevcut RefreshPerson -> RefreshMonthly ve LoadMonth yenileme zincirine bağlıdır. Personel seçimi, ay/yıl yüklemesi ve hafta oluşturma/düzenleme sonunda aynı mevcut assignments listesiyle tablo ve kartlar birlikte yenilenir. Eski personele veya döneme ait kontroller önce Dispose edilip temizlenir.
+
+19. Otomatik testler
+7 yeni test: yalnız çalışma; sıfır kart gizleme; tüm bilinen kategorilerin ayrı sayımı; HT/RT/Görevli'nin izin toplamından dışlanması; dinamik Doğum İzni ve özel durum; İşten Ayrıldı kesme davranışı; boş ay; gösterim sırası; eski footer'ın kaynakta kalmaması ve responsive panel sözleşmesi. Birleşik testlerde RP, Yİ, ÜZ, Üİ, Aİ, HT, RT ve G ayrı doğrulanır.
+
+20. dotnet test sonucu
+Son commit öncesi doğrulama: `dotnet test Puantaj.sln -c Release`: 72 başarılı, 0 başarısız, 0 atlanan; süre 1 dakika 58 saniye. Yeni MonthlySummaryTests hedefli sonucu: 7/7 başarılı.
+
+21. Release build sonucu
+Son commit öncesi doğrulama: `dotnet build Puantaj.sln -c Release --no-restore`: 0,52 saniyede başarılı, 0 uyarı, 0 hata. Self-contained win-x64 publish ayrıca başarılı; PuantajApp.dll ve publish çıktısı üretildi.
+
+22. 1366x768 manuel görünüm sonucu
+macOS üzerinde WinForms çalıştırılamadığı için gerçek pencere manuel görüntülenemedi. Kod seviyesinde ana içerik için yaklaşık 1050 px kullanılabilir genişlikte mevcut varsayılan kategorilerin 76-90 px aralığında tek satıra, scrollbar olmadan sığdığı doğrulandı. Windows'ta son piksel/Segoe UI Symbol kontrolü gereklidir.
+
+23. 1920x1080 manuel görünüm sonucu
+macOS kısıtı nedeniyle gerçek WinForms görüntüsü alınamadı. Hesaplama seviyesinde yaklaşık 1600 px içerik genişliğinde kartlar 125-146 px aralığında referans oranlarına yaklaşır ve gereksiz büyümez. Windows'ta manuel kontrol gereklidir.
+
+24. Referans görselle karşılaştırma
+Tek satır, kart oranı, solda ikon, sağda iki seviyeli yazı, pastel zemin, kategori border'ı, eşit aralık ve güçlü son kart uygulanmıştır. Referanstaki özel vektör ikonlar yerine bağımlılıksız Segoe UI Symbol karakterleri kullanıldığı için ikon şekilleri piksel düzeyinde birebir değildir.
+
+25. Haftalık vardiya alanına dokunulmadığının doğrulanması
+PersonnelCardControl diff'i yalnız aylık özet alanı field/build/refresh satırlarını içerir. Haftalık matris, hafta sonu rengi, Düzenle, Tümünü Temizle, Haftayı Oluştur ve Haftayı Kopyala kodlarında değişiklik yoktur.
+
+26. Lisans sistemi ve Generator’a dokunulmadığının doğrulanması
+src/Puantaj.Core/Licensing ve src/PuantajLicenseGenerator için git diff boştur.
+
+27. Excel şablon ayarlarına dokunulmadığının doğrulanması
+src/PuantajApp/PuantajApp.csproj ve templates için git diff boştur. Kaynak Excel SHA-256 değerleri HEAD ile aynıdır: haftalık 5c5150831e897d371a38f4b21e53aabbb16fecec163de5264f072d973ec5fe2b; aylık f3818fe4122f4f28ab61345a709f491f24c13617f6492477edafe48fe088b723.
+
+28. Git diff özeti
+İki mevcut dosyada hedefli değişiklik vardır: WeeklyPlanningService ve PersonnelCardControl. İki yeni uygulama dosyası (MonthlySummaryService, MonthlySummaryPanel), bir yeni test dosyası ve bu rapor oluşturuldu. Veritabanı, exporter, haftalık UI, lisans ve paketleme dosyalarında diff yoktur.
+
+29. Commit ve push yapılmadığının doğrulanması
+Kullanıcı incelemesi ve açık onayı sonrasında değişiklikler `feat: add dynamic monthly attendance summary cards` mesajıyla mevcut PR #1 branch'ine commit edilip push edilmiştir. Yeni branch veya PR açılmamış, PR merge edilmemiştir. Kesin commit SHA görev sonu çıktısında bildirilir.
+
+30. Bilinen eksikler veya Windows’ta yapılması gereken son kontroller
+- 1366x768 ve 1920x1080 gerçek Windows/WinForms görsel karşılaştırması.
+- Hedef Windows sürümünde Segoe UI Symbol gliflerinin görünümü.
+- Çok sayıda kullanıcı tanımlı özel kodla minimum okunabilirlik kontrolü; algoritma taşmayı engeller ancak olağan dışı yüksek kategori sayısında kartlar 76 px altına inebilir.
+- Windows DPI ölçekleri (%100, %125, %150) için son görsel kontrol.
