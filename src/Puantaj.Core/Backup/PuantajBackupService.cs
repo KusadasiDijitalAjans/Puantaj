@@ -76,19 +76,22 @@ public sealed class PuantajBackupService
 
     private static void CreateSqliteSnapshot(string sourcePath, string snapshotPath)
     {
-        using var source = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = sourcePath }.ToString());
-        using var destination = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = snapshotPath }.ToString());
+        using var source = new SqliteConnection(CreateUnpooledConnectionString(sourcePath));
+        using var destination = new SqliteConnection(CreateUnpooledConnectionString(snapshotPath));
         source.Open(); destination.Open(); source.BackupDatabase(destination);
     }
 
     private static void ValidateDatabase(string path)
     {
-        using var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = path, Mode = SqliteOpenMode.ReadOnly }.ToString());
+        using var connection = new SqliteConnection(CreateUnpooledConnectionString(path, SqliteOpenMode.ReadOnly));
         connection.Open();
         using var command = connection.CreateCommand();
         command.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('Employees','Shifts','Assignments','AppSettings','LockedMonths');";
         if (Convert.ToInt32(command.ExecuteScalar()) != 5) throw new InvalidDataException("Yedek veritabanı eksik veya geçersiz.");
     }
+
+    private static string CreateUnpooledConnectionString(string path, SqliteOpenMode mode = SqliteOpenMode.ReadWriteCreate) =>
+        new SqliteConnectionStringBuilder { DataSource = path, Mode = mode, Pooling = false }.ToString();
 
     private static string CreateTemporaryDirectory()
     {
