@@ -18,8 +18,7 @@ internal static class ExcelBranding
     public static void ApplyMonthly(IXLWorksheet sheet, AppSettings? settings)
     {
         if (settings is null) return;
-        foreach (var picture in sheet.Pictures.ToList()) picture.Delete();
-        AddLogoInRange(sheet, settings, "C1:C4");
+        KeepTemplateLogoInRange(sheet, "C1:C4");
         WriteSignature(sheet, "E52", "E53", settings.HumanResourcesManager, settings.HumanResourcesTitle);
         WriteSignature(sheet, "AC52", "AC53", settings.DepartmentManager, settings.DepartmentManagerTitle);
         WriteSignature(sheet, "AS52", "AS53", settings.GeneralManager, settings.GeneralManagerTitle);
@@ -41,17 +40,19 @@ internal static class ExcelBranding
         }
     }
 
-    private static void AddLogoInRange(IXLWorksheet sheet, AppSettings settings, string rangeAddress)
+    private static void KeepTemplateLogoInRange(IXLWorksheet sheet, string rangeAddress)
     {
-        if (!settings.PrintLogo || string.IsNullOrWhiteSpace(settings.LogoPath) || !File.Exists(settings.LogoPath)) return;
         try
         {
+            var pictures = sheet.Pictures.OrderByDescending(picture => picture.OriginalWidth * picture.OriginalHeight).ToList();
+            if (pictures.Count == 0) return;
+            var picture = pictures[0];
+            foreach (var duplicate in pictures.Skip(1)) duplicate.Delete();
             var range = sheet.Range(rangeAddress); var first = range.FirstCell();
             var width = ColumnWidthToPixels(sheet.Column(first.Address.ColumnNumber).Width);
             var height = Enumerable.Range(first.Address.RowNumber, range.RowCount())
                 .Sum(row => (int)Math.Round(sheet.Row(row).Height * 96d / 72d));
             const int padding = 4;
-            var picture = sheet.AddPicture(settings.LogoPath);
             var scale = Math.Min((width - padding * 2d) / picture.OriginalWidth, (height - padding * 2d) / picture.OriginalHeight);
             var targetWidth = Math.Max(1, (int)Math.Floor(picture.OriginalWidth * scale));
             var targetHeight = Math.Max(1, (int)Math.Floor(picture.OriginalHeight * scale));
