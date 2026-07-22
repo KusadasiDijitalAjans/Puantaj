@@ -105,15 +105,14 @@ public sealed class MonthlySummaryTests
     }
 
     [Fact]
-    public void MonthlySummaryUiSourceUsesSingleRowResponsiveCardsWithoutLegacyFooter()
+    public void MonthlySummaryUiSourceUsesRightSideVerticalCardsWithoutLegacyFooter()
     {
         var root = FindProjectRoot();
         var panel = File.ReadAllText(Path.Combine(root, "src", "PuantajApp", "MonthlySummaryPanel.cs"));
         var card = File.ReadAllText(Path.Combine(root, "src", "PuantajApp", "PersonnelCardControl.cs"));
-        Assert.Contains("AutoScroll = false", panel, StringComparison.Ordinal);
-        Assert.Contains("CalculateLayout", panel, StringComparison.Ordinal);
-        Assert.Contains("PreferredCardWidth = 146", panel, StringComparison.Ordinal);
-        Assert.Contains("MinimumCardWidth = 76", panel, StringComparison.Ordinal);
+        Assert.Contains("AutoScroll = true", panel, StringComparison.Ordinal);
+        Assert.Contains("top += CardHeight + PreferredGap", panel, StringComparison.Ordinal);
+        Assert.Contains("BuildSummary", card, StringComparison.Ordinal);
         Assert.DoesNotContain("Toplam Çalışma Günü:", card, StringComparison.Ordinal);
         Assert.Contains("_monthlySummary.SetSummary", card, StringComparison.Ordinal);
     }

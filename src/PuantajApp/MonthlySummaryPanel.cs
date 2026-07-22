@@ -5,18 +5,15 @@ namespace PuantajApp;
 
 internal sealed class MonthlySummaryPanel : Panel
 {
-    internal const int PreferredCardWidth = 146;
-    internal const int MinimumCardWidth = 76;
-    internal const int CardHeight = 66;
+    internal const int CardHeight = 58;
     internal const int PreferredGap = 8;
 
     public MonthlySummaryPanel()
     {
-        Dock = DockStyle.Bottom;
-        Height = 0;
-        Padding = new Padding(8, 5, 8, 5);
+        Dock = DockStyle.Fill;
+        Padding = new Padding(4);
         BackColor = Color.White;
-        AutoScroll = false;
+        AutoScroll = true;
         DoubleBuffered = true;
         Resize += (_, _) => LayoutCards();
     }
@@ -28,34 +25,22 @@ internal sealed class MonthlySummaryPanel : Panel
         Controls.Clear();
         foreach (var item in summary.Items.Where(item => item.Days > 0))
             Controls.Add(new MonthlySummaryCard(item, StyleFor(item)));
-        Height = Controls.Count == 0 ? 0 : CardHeight + Padding.Vertical;
         Visible = Controls.Count > 0;
         LayoutCards();
         ResumeLayout();
     }
 
-    internal static (int CardWidth, int Gap) CalculateLayout(int availableWidth, int count)
-    {
-        if (availableWidth <= 0 || count <= 0) return (0, 0);
-        var gap = count == 1 ? 0 : PreferredGap;
-        var width = Math.Min(PreferredCardWidth, (availableWidth - gap * (count - 1)) / count);
-        if (width >= MinimumCardWidth) return (width, gap);
-        gap = count == 1 ? 0 : Math.Max(2, Math.Min(PreferredGap, (availableWidth - MinimumCardWidth * count) / (count - 1)));
-        width = Math.Max(1, (availableWidth - gap * (count - 1)) / count);
-        return (width, gap);
-    }
-
     private void LayoutCards()
     {
         if (Controls.Count == 0) return;
-        var available = Math.Max(0, ClientSize.Width - Padding.Horizontal);
-        var (width, gap) = CalculateLayout(available, Controls.Count);
-        var left = Padding.Left;
+        var width = Math.Max(1, ClientSize.Width - Padding.Horizontal - (VerticalScroll.Visible ? SystemInformation.VerticalScrollBarWidth : 0));
+        var top = Padding.Top;
         foreach (Control control in Controls)
         {
-            control.Bounds = new Rectangle(left, Padding.Top, width, CardHeight);
-            left += width + gap;
+            control.Bounds = new Rectangle(Padding.Left, top, width, CardHeight);
+            top += CardHeight + PreferredGap;
         }
+        AutoScrollMinSize = new Size(0, top + Padding.Bottom);
     }
 
     private static SummaryCardStyle StyleFor(MonthlySummaryItem item) => item.Key switch

@@ -20,12 +20,13 @@ internal sealed class PersonnelCardControl : UserControl
     private readonly FlowLayoutPanel _weekStates = new() { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false, AutoScroll = true };
     private readonly TabControl _weeks = new() { Dock = DockStyle.Top, Height = 70, Appearance = TabAppearance.FlatButtons, SizeMode = TabSizeMode.Fixed, ItemSize = new Size(155, 54) };
     private readonly ComboBox _defaultShift = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 170 };
-    private readonly DataGridView _matrix = new() { Dock = DockStyle.Fill, AllowUserToAddRows = false, RowHeadersVisible = false, AutoGenerateColumns = false, BackgroundColor = Color.White, BorderStyle = BorderStyle.FixedSingle, AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill, AllowUserToResizeColumns = false, ScrollBars = ScrollBars.None };
+    private readonly DataGridView _matrix = new() { Dock = DockStyle.Fill, AllowUserToAddRows = false, RowHeadersVisible = false, AutoGenerateColumns = false, BackgroundColor = Color.White, BorderStyle = BorderStyle.FixedSingle, AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill, AllowUserToResizeColumns = false, ScrollBars = ScrollBars.Vertical };
     private readonly Panel _matrixHost = new() { Dock = DockStyle.Fill };
     private readonly LockedGridOverlay _matrixOverlay = new() { Dock = DockStyle.Fill, Visible = false };
     private readonly Button _editButton;
     private readonly Button _clearButton;
     private readonly Button _generateButton;
+    private readonly Button _generateMonthButton;
     private readonly Button _copyButton;
     private readonly Button _copyMonthButton;
     private readonly DataGridView _monthly = new() { Dock = DockStyle.Fill, ReadOnly = true, AllowUserToAddRows = false, RowHeadersVisible = false, ColumnHeadersHeight = 42, BackgroundColor = Color.White };
@@ -34,6 +35,7 @@ internal sealed class PersonnelCardControl : UserControl
     private IReadOnlyList<MonthWeek> _monthWeeks = [];
     private bool _loading;
     private bool _editing;
+    public event EventHandler? CreateMonthRequested;
 
     public PersonnelCardControl(PuantajDatabase database, Func<int> year, Func<int> month, string hotel, string department)
     {
@@ -41,6 +43,7 @@ internal sealed class PersonnelCardControl : UserControl
         _editButton = Button("✎  Düzenle", (_, _) => BeginEdit());
         _clearButton = Button("▣  Tümünü Temizle", (_, _) => ClearSelectionsWithConfirmation());
         _generateButton = Button("✓  Haftayı Oluştur", (_, _) => GenerateWeek(), Color.FromArgb(13, 104, 220), Color.White);
+        _generateMonthButton = Button("▣  Ayı Oluştur", (_, _) => CreateMonthRequested?.Invoke(this, EventArgs.Empty), Color.White, Color.FromArgb(18, 142, 73));
         _copyButton = Button("▣  Haftayı Kopyala", (_, _) => CopyWeek());
         _copyMonthButton = Button("▣  Ayı Kopyala", (_, _) => CopyMonth());
         Dock = DockStyle.Fill; BackColor = Color.FromArgb(246, 247, 249); Font = new Font("Segoe UI", 9);
@@ -85,11 +88,11 @@ internal sealed class PersonnelCardControl : UserControl
 
     private Control BuildLayout()
     {
-        var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 2, Padding = new Padding(6) };
+        var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 2, Padding = new Padding(8), BackColor = Color.FromArgb(244, 247, 252) };
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 280)); root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        root.RowStyles.Add(new RowStyle(SizeType.Percent, 74)); root.RowStyles.Add(new RowStyle(SizeType.Percent, 26));
-        root.Controls.Add(BuildLeft(), 0, 0); root.SetRowSpan(root.GetControlFromPosition(0, 0)!, 2);
-        root.Controls.Add(BuildWorkspace(), 1, 0); root.Controls.Add(BuildMonthly(), 1, 1); return root;
+        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100)); root.RowStyles.Add(new RowStyle(SizeType.Absolute, 155));
+        root.Controls.Add(BuildLeft(), 0, 0); root.Controls.Add(BuildWorkspace(), 1, 0);
+        var monthly = BuildMonthly(); root.Controls.Add(monthly, 0, 1); root.SetColumnSpan(monthly, 2); return root;
     }
 
     private Control BuildLeft()
@@ -107,11 +110,14 @@ internal sealed class PersonnelCardControl : UserControl
 
     private Control BuildWorkspace()
     {
-        var panel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(6, 0, 0, 6) };
+        var panel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(8, 0, 0, 8) };
         var weekBar = new Panel { Dock = DockStyle.Top, Height = 70 };
         _copyButton.Dock = DockStyle.Right; _copyButton.Width = 155; _copyMonthButton.Dock = DockStyle.Right; _copyMonthButton.Width = 135; _weeks.Dock = DockStyle.Fill;
         weekBar.Controls.Add(_weeks); weekBar.Controls.Add(_copyMonthButton); weekBar.Controls.Add(_copyButton);
-        panel.Controls.Add(BuildMiddle()); panel.Controls.Add(weekBar); return panel;
+        var content = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, Padding = new Padding(0, 6, 0, 0) };
+        content.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100)); content.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 245));
+        content.Controls.Add(BuildMiddle(), 0, 0); content.Controls.Add(BuildSummary(), 1, 0);
+        panel.Controls.Add(content); panel.Controls.Add(weekBar); return panel;
     }
 
     private Control BuildMiddle()
@@ -122,9 +128,10 @@ internal sealed class PersonnelCardControl : UserControl
         hint.Dock = DockStyle.Top; hint.Height = 42; hint.BackColor = Color.FromArgb(237, 246, 255); hint.ForeColor = Color.FromArgb(31, 82, 145); hint.Padding = new Padding(12);
         var shiftBar = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 48, Padding = new Padding(0, 9, 0, 3) };
         shiftBar.Controls.Add(Label("Varsayılan vardiya", 9, true)); shiftBar.Controls.Add(_defaultShift);
-        var actions = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 56, FlowDirection = FlowDirection.RightToLeft, Padding = new Padding(0, 9, 0, 3), WrapContents = false };
-        _generateButton.Width = 160; _clearButton.Width = 145; _editButton.Width = 120;
-        actions.Controls.Add(_generateButton); actions.Controls.Add(_clearButton); actions.Controls.Add(_editButton);
+        var actions = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 58, FlowDirection = FlowDirection.RightToLeft, Padding = new Padding(0, 10, 4, 4), WrapContents = false };
+        _generateButton.Width = 160; _generateMonthButton.Width = 140; _clearButton.Width = 105; _editButton.Width = 105;
+        _clearButton.ForeColor = Color.FromArgb(210, 49, 49); _editButton.BackColor = Color.FromArgb(13, 104, 220); _editButton.ForeColor = Color.White;
+        actions.Controls.Add(_generateButton); actions.Controls.Add(_clearButton); actions.Controls.Add(_editButton); actions.Controls.Add(_generateMonthButton);
         _matrixHost.Controls.Clear(); _matrixHost.Controls.Add(_matrix); _matrixHost.Controls.Add(_matrixOverlay);
         card.Controls.Add(_matrixHost); card.Controls.Add(actions); card.Controls.Add(shiftBar); card.Controls.Add(hint); card.Controls.Add(leftTitle);
         return card;
@@ -133,7 +140,15 @@ internal sealed class PersonnelCardControl : UserControl
     private Control BuildMonthly()
     {
         var card = Card(); var title = Label("AYLIK PUANTAJ ÖNİZLEMESİ", 9, true); title.Dock = DockStyle.Top; title.Height = 28; title.Padding = new Padding(8, 7, 0, 0);
-        card.Controls.Add(_monthly); card.Controls.Add(_monthlySummary); card.Controls.Add(title); return card;
+        card.Margin = new Padding(0, 6, 0, 0); card.Controls.Add(_monthly); card.Controls.Add(title); return card;
+    }
+
+    private Control BuildSummary()
+    {
+        var card = Card(); card.Margin = new Padding(10, 0, 0, 0); card.Padding = new Padding(10);
+        var title = Label("AYLIK ÖZET", 10, true); title.Dock = DockStyle.Top; title.Height = 38; title.ForeColor = Color.FromArgb(20, 45, 80);
+        _monthlySummary.Dock = DockStyle.Fill;
+        card.Controls.Add(_monthlySummary); card.Controls.Add(title); return card;
     }
 
     private void LoadEmployees()
