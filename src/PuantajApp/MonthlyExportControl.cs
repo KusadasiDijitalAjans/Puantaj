@@ -125,7 +125,13 @@ internal sealed class MonthlyExportControl : UserControl
         if (_database.IsMonthLocked(_year(), _month())) return;
         if (MessageBox.Show("Bu ay kilitlensin mi?\n\nKilitlenen ayın planı ve çıktıları, kilit kaldırılana kadar değiştirilemez.",
             "Ay kilitleme", MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
-        _database.LockMonth(_year(), _month());
+        var result = _database.LockMonthIfComplete(_year(), _month());
+        if (result.Missing.Count > 0)
+        {
+            var details = string.Join("\n", result.Missing.Take(20).Select(item => $"• {item.EmployeeName} — {item.WorkDate:dd.MM.yyyy}"));
+            MessageBox.Show("Ay kilitlenemedi. Eksik kayıtlar:\n\n" + details, "Eksik Puantaj", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
         MessageBox.Show("Ay kilitlendi.", "Puantaj", MessageBoxButtons.OK, MessageBoxIcon.Information);
     }
 }

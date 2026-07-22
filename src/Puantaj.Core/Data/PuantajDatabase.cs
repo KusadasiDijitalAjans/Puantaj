@@ -552,6 +552,74 @@ public sealed class PuantajDatabase
             ("$year", year), ("$month", month), ("$at", DateTimeOffset.UtcNow.ToString("O")));
     }
 
+    public MonthCompletion EvaluateMonthCompletion(int year, int month)
+    {
+        ValidateMonth(year, month);
+        using var connection = Open(); using var transaction = connection.BeginTransaction();
+        var result = EvaluateMonthCompletion(connection, transaction, year, month); transaction.Commit(); return result;
+    }
+
+    public MonthCompletion LockMonthIfComplete(int year, int month)
+    {
+        ValidateMonth(year, month);
+        using var connection = Open(); using var transaction = connection.BeginTransaction();
+        var result = EvaluateMonthCompletion(connection, transaction, year, month);
+        if (result.Missing.Count > 0) { transaction.Rollback(); return result; }
+        Execute(connection, "INSERT OR IGNORE INTO LockedMonths (Year,Month,LockedAt) VALUES ($year,$month,$at);", transaction,
+            ("$year", year), ("$month", month), ("$at", DateTimeOffset.UtcNow.ToString("O")));
+        transaction.Commit(); return result;
+    }
+
+    private static MonthCompletion EvaluateMonthCompletion(SqliteConnection connection, SqliteTransaction transaction, int year, int month)
+    {
+        var from = new DateOnly(year, month, 1); var to = from.AddMonths(1).AddDays(-1);
+        var employees = new List<(long Id, string Name, DateOnly? HireDate)>();
+        using (var command = connection.CreateCommand())
+        {
+            command.Transaction = transaction;
+            command.CommandText = "SELECT Id,FullName,HireDate FROM Employees WHERE IsActive=1 ORDER BY DisplayOrder,FullName;";
+            using var reader = command.ExecuteReader();
+            while (reader.Read()) employees.Add((reader.GetInt64(0), reader.GetString(1), reader.IsDBNull(2) ? null : DateOnly.ParseExact(reader.GetString(2), "yyyy-MM-dd", CultureInfo.InvariantCulture)));
+        }
+        var assignments = new Dictionary<long, Dictionary<DateOnly, string>>();
+        using (var command = connection.CreateCommand())
+        {
+            command.Transaction = transaction;
+            command.CommandText = "SELECT EmployeeId,WorkDate,Code FROM Assignments WHERE WorkDate >= $from AND WorkDate <= $to;";
+            command.Parameters.AddWithValue("$from", FormatDate(from)); command.Parameters.AddWithValue("$to", FormatDate(to));
+            using var reader = command.ExecuteReader();
+            while (reader.Read())
+            {
+                var id = reader.GetInt64(0); if (!assignments.TryGetValue(id, out var values)) assignments[id] = values = [];
+                values[DateOnly.ParseExact(reader.GetString(1), "yyyy-MM-dd", CultureInfo.InvariantCulture)] = reader.GetString(2);
+            }
+        }
+        var endedCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        using (var command = connection.CreateCommand())
+        {
+            command.Transaction = transaction; command.CommandText = "SELECT Code,Description FROM Shifts;";
+            using var reader = command.ExecuteReader();
+            while (reader.Read())
+            {
+                var definition = new AssignmentCodeDefinition(reader.GetString(0), reader.GetString(1), null, null, false, 0);
+                if (definition.IsEmploymentEnded) endedCodes.Add(definition.Code);
+            }
+        }
+        var missing = new List<MissingAttendance>(); var completed = new HashSet<long>();
+        foreach (var employee in employees)
+        {
+            var requiredFrom = employee.HireDate is { } hire && hire > from ? hire : from;
+            if (requiredFrom > to) continue;
+            var values = assignments.GetValueOrDefault(employee.Id) ?? [];
+            var ended = values.Where(item => endedCodes.Contains(item.Value)).Select(item => (DateOnly?)item.Key).Min();
+            var requiredTo = ended is null ? to : ended.Value.AddDays(-1);
+            for (var date = requiredFrom; date <= requiredTo; date = date.AddDays(1))
+                if (!values.ContainsKey(date)) missing.Add(new MissingAttendance(employee.Id, employee.Name, date));
+            if (!missing.Any(item => item.EmployeeId == employee.Id)) completed.Add(employee.Id);
+        }
+        return new MonthCompletion(completed, missing);
+    }
+
     public void UnlockMonth(int year, int month)
     {
         ValidateMonth(year, month);

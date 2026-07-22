@@ -50,6 +50,33 @@ public sealed class SettingsLockBackupTests : IDisposable
     }
 
     [Fact]
+    public void MonthLockRequiresEveryApplicableDayAndPersistsUntilExplicitlyUnlocked()
+    {
+        var database = CreateDatabase(); var employee = database.AddEmployee("Ali");
+        database.UpdateEmployeeDetails(employee, "", "", new DateOnly(2026, 7, 10));
+        for (var day = 10; day <= 31; day++) database.Assign(employee, new DateOnly(2026, 7, day), "A");
+        database.ClearWeekAssignments(employee, new DateOnly(2026, 7, 20), new DateOnly(2026, 7, 20));
+        var incomplete = database.LockMonthIfComplete(2026, 7);
+        Assert.Equal(new DateOnly(2026, 7, 20), Assert.Single(incomplete.Missing).WorkDate);
+        Assert.False(database.IsMonthLocked(2026, 7));
+        database.Assign(employee, new DateOnly(2026, 7, 20), "A");
+        var complete = database.LockMonthIfComplete(2026, 7);
+        Assert.Empty(complete.Missing); Assert.Contains(employee, complete.CompletedEmployeeIds);
+        Assert.True(new PuantajDatabase(database.DatabasePath).IsMonthLocked(2026, 7));
+        database.UnlockMonth(2026, 7); Assert.False(database.IsMonthLocked(2026, 7));
+    }
+
+    [Fact]
+    public void CompletionStopsBeforeEmploymentEndedDate()
+    {
+        var database = CreateDatabase(); var employee = database.AddEmployee("Ece");
+        for (var day = 1; day <= 9; day++) database.Assign(employee, new DateOnly(2026, 7, day), "A");
+        database.Assign(employee, new DateOnly(2026, 7, 10), "İA");
+        var completion = database.EvaluateMonthCompletion(2026, 7);
+        Assert.Empty(completion.Missing); Assert.Contains(employee, completion.CompletedEmployeeIds);
+    }
+
+    [Fact]
     public void BackupContainsDatabaseAndLogoButNotLicense()
     {
         var database = CreateDatabase();

@@ -1,11 +1,11 @@
-; Puantaj V1.0.0 - Inno Setup script
+; Puantaj V1.0.1 - Inno Setup script
 ; Bu betik yalnızca Windows üzerinde, Inno Setup 6 (https://jrsoftware.org/isinfo.php) ile
 ; derlenebilir (ISCC.exe Puantaj.iss). macOS/Linux üzerinde derlenemez.
 ; Önce "dotnet publish src\PuantajApp\PuantajApp.csproj -c Release" çalıştırılmış olmalıdır
 ; (csproj zaten RuntimeIdentifier=win-x64, SelfContained=true, PublishSingleFile=true içerir).
 
 #define MyAppName "Puantaj"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.0.1"
 #define MyAppPublisher "Puantaj"
 #define MyAppExeName "PuantajApp.exe"
 #define MyPublishDir "..\src\PuantajApp\bin\Release\net8.0-windows\win-x64\publish"

@@ -152,8 +152,8 @@ public sealed class WeeklyWorkflowV101Tests : IDisposable
     {
         var database = CreateDatabase(); var employee = database.AddEmployee("Personel");
         var weeks = _planning.GetMonthWeeks(2026, 7); var first = weeks[0]; var second = weeks[1];
-        database.SaveWeekAssignments(employee, first.ActiveFrom, first.ActiveTo, _planning.BuildWeek(first, "A", []), false);
-        database.SaveWeekAssignments(employee, second.ActiveFrom, second.ActiveTo, _planning.BuildWeek(second, "B", []), false);
+        database.SaveWeekAssignments(employee, first.ActiveFrom, first.ActiveTo, _planning.BuildWeek(first, "A", new Dictionary<DateOnly, string>()), false);
+        database.SaveWeekAssignments(employee, second.ActiveFrom, second.ActiveTo, _planning.BuildWeek(second, "B", new Dictionary<DateOnly, string>()), false);
 
         database.ClearWeekAssignments(employee, first.ActiveFrom, first.ActiveTo);
 

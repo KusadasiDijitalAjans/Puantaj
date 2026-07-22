@@ -14,7 +14,7 @@ internal sealed class PersonnelCardControl : UserControl
     private readonly Func<int> _year; private readonly Func<int> _month;
     private string _hotel; private string _department;
     private readonly TextBox _search = new() { PlaceholderText = "Ara...", Dock = DockStyle.Top, Height = 34 };
-    private readonly ListBox _employees = new() { Dock = DockStyle.Fill, BorderStyle = BorderStyle.None, Font = new Font("Segoe UI", 10) };
+    private readonly ListBox _employees = new() { Dock = DockStyle.Fill, BorderStyle = BorderStyle.None, Font = new Font("Segoe UI", 10), DrawMode = DrawMode.OwnerDrawFixed, ItemHeight = 34 };
     private readonly Label _employeeName = Label("Personel seçin", 11, true);
     private readonly Label _employeeInfo = Label("", 9, false);
     private readonly FlowLayoutPanel _weekStates = new() { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false, AutoScroll = true };
@@ -29,12 +29,15 @@ internal sealed class PersonnelCardControl : UserControl
     private readonly Button _generateMonthButton;
     private readonly Button _copyButton;
     private readonly Button _copyMonthButton;
+    private readonly Button _monthLockButton;
+    private readonly Label _lockStatus = Label("", 8, true);
     private readonly DataGridView _monthly = new() { Dock = DockStyle.Fill, ReadOnly = true, AllowUserToAddRows = false, RowHeadersVisible = false, ColumnHeadersHeight = 42, BackgroundColor = Color.White };
     private readonly MonthlySummaryPanel _monthlySummary = new();
     private IReadOnlyList<AssignmentCodeDefinition> _codes = [];
     private IReadOnlyList<MonthWeek> _monthWeeks = [];
     private bool _loading;
     private bool _editing;
+    private IReadOnlySet<long> _completedEmployeeIds = new HashSet<long>();
 
     public PersonnelCardControl(PuantajDatabase database, Func<int> year, Func<int> month, string hotel, string department)
     {
@@ -45,10 +48,12 @@ internal sealed class PersonnelCardControl : UserControl
         _generateMonthButton = Button("▣  Ayı Oluştur", (_, _) => GenerateMonth(), Color.White, Color.FromArgb(18, 142, 73));
         _copyButton = Button("▣  Haftayı Kopyala", (_, _) => CopyWeek());
         _copyMonthButton = Button("▣  Ayı Kopyala", (_, _) => CopyMonth());
+        _monthLockButton = Button("🔒  Ayı Kilitle", (_, _) => ToggleMonthLock());
         Dock = DockStyle.Fill; BackColor = Color.FromArgb(246, 247, 249); Font = new Font("Segoe UI", 9);
         Controls.Add(BuildLayout());
         _search.TextChanged += (_, _) => LoadEmployees();
         _employees.SelectedIndexChanged += (_, _) => { _editing = false; RefreshPerson(); };
+        _employees.DrawItem += DrawEmployee;
         _weeks.SelectedIndexChanged += (_, _) => { _editing = false; RefreshWeek(); };
         _matrix.CurrentCellDirtyStateChanged += (_, _) => { if (_matrix.IsCurrentCellDirty) _matrix.CommitEdit(DataGridViewDataErrorContexts.Commit); };
         _matrix.CellValueChanged += MatrixValueChanged;
@@ -120,8 +125,9 @@ internal sealed class PersonnelCardControl : UserControl
     {
         var panel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(8, 0, 0, 8) };
         var weekBar = new Panel { Dock = DockStyle.Top, Height = 70 };
-        _copyButton.Dock = DockStyle.Right; _copyButton.Width = 155; _copyMonthButton.Dock = DockStyle.Right; _copyMonthButton.Width = 135; _weeks.Dock = DockStyle.Fill;
-        weekBar.Controls.Add(_weeks); weekBar.Controls.Add(_copyMonthButton); weekBar.Controls.Add(_copyButton);
+        _monthLockButton.Dock = DockStyle.Right; _monthLockButton.Width = 140; _copyButton.Dock = DockStyle.Right; _copyButton.Width = 155; _copyMonthButton.Dock = DockStyle.Right; _copyMonthButton.Width = 135; _weeks.Dock = DockStyle.Fill;
+        _lockStatus.Dock = DockStyle.Right; _lockStatus.Width = 105; _lockStatus.TextAlign = ContentAlignment.MiddleCenter;
+        weekBar.Controls.Add(_weeks); weekBar.Controls.Add(_lockStatus); weekBar.Controls.Add(_monthLockButton); weekBar.Controls.Add(_copyMonthButton); weekBar.Controls.Add(_copyButton);
         var content = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, Padding = new Padding(0, 6, 0, 0) };
         content.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100)); content.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 245));
         content.Controls.Add(BuildMiddle(), 0, 0); content.Controls.Add(BuildSummary(), 1, 0);
@@ -166,6 +172,7 @@ internal sealed class PersonnelCardControl : UserControl
         _employees.DataSource = null; _employees.DataSource = values; _employees.DisplayMember = nameof(Employee.FullName);
         if (selectedId is not null) _employees.SelectedItem = values.FirstOrDefault(item => item.Id == selectedId);
         if (_employees.SelectedIndex < 0 && values.Count > 0) _employees.SelectedIndex = 0;
+        UpdateCompletionIndicators();
     }
 
     private void LoadMonth()
@@ -178,6 +185,7 @@ internal sealed class PersonnelCardControl : UserControl
 
     private void RefreshPerson()
     {
+        UpdateCompletionIndicators(); RefreshLockState();
         var employee = SelectedEmployee();
         _employeeName.Text = employee?.FullName ?? "Personel seçin";
         _employeeInfo.Text = employee is null ? "" : $"{(string.IsNullOrWhiteSpace(employee.Position) ? _department : employee.Position)}\nÇalışma Şekli: {(string.IsNullOrWhiteSpace(employee.WorkPattern) ? "Belirtilmedi" : employee.WorkPattern)}{(employee.HireDate is null ? "" : $"  •  Giriş: {employee.HireDate:dd.MM.yyyy}")}\nAktif dönem: {MonthName()} {_year()}";
@@ -233,11 +241,17 @@ internal sealed class PersonnelCardControl : UserControl
         var existing = _database.GetAssignments(week.ActiveFrom, week.ActiveTo).Where(item => item.EmployeeId == employee.Id).ToList();
         _editButton.Enabled = existing.Count > 0; _copyButton.Enabled = _database.GetEmployees().Count > 1;
         _copyMonthButton.Enabled = _database.GetEmployees().Count > 1;
-        _clearButton.Enabled = existing.Count == 0 || _editing; _defaultShift.Enabled = existing.Count == 0 || _editing;
+        _clearButton.Enabled = true; _defaultShift.Enabled = existing.Count == 0 || _editing;
+        _generateButton.Enabled = existing.Count == 0 || _editing; _generateMonthButton.Enabled = existing.Count > 0;
         _generateButton.Text = _editing ? "✓  Değişiklikleri Kaydet" : "✓  Haftayı Oluştur";
         if (existing.Count > 0) LoadExistingSelections(existing);
         if (existing.Count > 0 && !_editing) SetActiveMatrixReadOnly(week, true);
         SetMatrixLocked(existing.Count > 0 && !_editing);
+        if (_database.IsMonthLocked(_year(), _month()))
+        {
+            _editButton.Enabled = _clearButton.Enabled = _generateButton.Enabled = _generateMonthButton.Enabled = false;
+            _copyButton.Enabled = _copyMonthButton.Enabled = false; _defaultShift.Enabled = false; SetMatrixLocked(true);
+        }
     }
 
     private void RefreshMonthly()
@@ -410,6 +424,61 @@ internal sealed class PersonnelCardControl : UserControl
             graphics.DrawLines(tick, new Point[] { new(bounds.Left + 4, bounds.Top + 9), new(bounds.Left + 8, bounds.Bottom - 4), new(bounds.Right - 3, bounds.Top + 4) });
         }
         args.Handled = true;
+    }
+
+    private void UpdateCompletionIndicators()
+    {
+        _completedEmployeeIds = _database.EvaluateMonthCompletion(_year(), _month()).CompletedEmployeeIds;
+        _employees.Invalidate();
+    }
+
+    private void DrawEmployee(object? sender, DrawItemEventArgs args)
+    {
+        if (args.Index < 0 || args.Index >= _employees.Items.Count) return;
+        var employee = (Employee)_employees.Items[args.Index]; var selected = (args.State & DrawItemState.Selected) != 0;
+        var completed = _completedEmployeeIds.Contains(employee.Id);
+        var background = selected ? Color.FromArgb(13, 104, 220) : completed ? Color.FromArgb(224, 247, 231) : Color.White;
+        var foreground = selected ? Color.White : completed ? Color.FromArgb(20, 112, 61) : Color.FromArgb(31, 41, 55);
+        using var brush = new SolidBrush(background); args.Graphics.FillRectangle(brush, args.Bounds);
+        TextRenderer.DrawText(args.Graphics, completed ? $"✓  {employee.FullName}" : employee.FullName, _employees.Font,
+            new Rectangle(args.Bounds.X + 10, args.Bounds.Y, args.Bounds.Width - 12, args.Bounds.Height), foreground,
+            TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+    }
+
+    private void RefreshLockState()
+    {
+        var locked = _database.IsMonthLocked(_year(), _month());
+        _monthLockButton.Text = locked ? "🔓  Ay Kilidini Aç" : "🔒  Ayı Kilitle";
+        _monthLockButton.ForeColor = locked ? Color.FromArgb(176, 50, 50) : Color.FromArgb(20, 112, 61);
+        _lockStatus.Text = locked ? "KİLİTLİ" : "AÇIK"; _lockStatus.ForeColor = locked ? Color.FromArgb(176, 50, 50) : Color.FromArgb(70, 90, 115);
+    }
+
+    private void ToggleMonthLock()
+    {
+        var year = _year(); var month = _month(); var locked = _database.IsMonthLocked(year, month);
+        if (locked)
+        {
+            if (MessageBox.Show($"{MonthName()} {year} ayının kilidi açılacak. Devam edilsin mi?", "Ay Kilidini Aç",
+                MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
+            _database.UnlockMonth(year, month); RefreshPerson(); return;
+        }
+        var completion = _database.EvaluateMonthCompletion(year, month);
+        if (completion.Missing.Count > 0)
+        {
+            var lines = completion.Missing.Take(30).Select(item =>
+            {
+                var week = _monthWeeks.FirstOrDefault(value => item.WorkDate >= value.ActiveFrom && item.WorkDate <= value.ActiveTo);
+                return $"• {item.EmployeeName} — {item.WorkDate:dd.MM.yyyy}" + (week is null ? "" : $" ({week.Number}. hafta)");
+            });
+            var more = completion.Missing.Count > 30 ? $"\n… ve {completion.Missing.Count - 30} eksik kayıt daha" : "";
+            MessageBox.Show("Ay kilitlenemedi. Eksik kayıtlar:\n\n" + string.Join("\n", lines) + more,
+                "Eksik Puantaj", MessageBoxButtons.OK, MessageBoxIcon.Warning); return;
+        }
+        if (MessageBox.Show($"{MonthName()} {year} ayı değişikliklere kapatılacak. Devam edilsin mi?", "Ayı Kilitle",
+            MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
+        var lockedResult = _database.LockMonthIfComplete(year, month);
+        if (lockedResult.Missing.Count > 0) { RefreshPerson(); return; }
+        RefreshPerson();
     }
 
     private void SetMatrixEnabledDays(MonthWeek week)
