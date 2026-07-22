@@ -19,30 +19,32 @@ public sealed class MainForm : Form
         WindowState = FormWindowState.Maximized; MinimumSize = new Size(1180, 720); BackColor = Color.FromArgb(245, 246, 248);
         _year.Value = DateTime.Today.Year; _month.Items.AddRange(CultureInfo.GetCultureInfo("tr-TR").DateTimeFormat.MonthNames.Take(12).Cast<object>().ToArray()); _month.SelectedIndex = DateTime.Today.Month - 1;
         _card = new PersonnelCardControl(database, () => (int)_year.Value, () => _month.SelectedIndex + 1, settings.HotelName, settings.DepartmentName);
-        _card.CreateMonthRequested += (_, _) => OpenMonthlyExport(database);
-        var header = BuildHeader(database, settings);
+        var header = BuildHeader(database);
         Controls.Add(_card); Controls.Add(header);
         _year.ValueChanged += (_, _) => _card.ReloadAll(); _month.SelectedIndexChanged += (_, _) => _card.ReloadAll();
         _clockTimer.Tick += (_, _) => UpdateClock(); UpdateClock(); _clockTimer.Start();
         FormClosed += (_, _) => _clockTimer.Dispose();
     }
 
-    private Control BuildHeader(PuantajDatabase database, AppSettings settings)
+    private Control BuildHeader(PuantajDatabase database)
     {
-        var bar = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 52, BackColor = Color.FromArgb(14, 35, 68), Padding = new Padding(14, 9, 8, 5), WrapContents = false };
+        var bar = new TableLayoutPanel { Dock = DockStyle.Top, Height = 56, BackColor = Color.FromArgb(19, 42, 74), Padding = new Padding(14, 8, 10, 7), ColumnCount = 3 };
+        bar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 185)); bar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100)); bar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 410));
         var title = new Label { Text = "▣  PUANTAJ", ForeColor = Color.White, Font = new Font("Segoe UI", 13, FontStyle.Bold), AutoSize = false, Width = 185, Height = 32, TextAlign = ContentAlignment.MiddleLeft };
-        bar.Controls.Add(title); bar.Controls.Add(new Label { Width = 15 }); bar.Controls.Add(HeaderLabel("Yıl")); bar.Controls.Add(_year); bar.Controls.Add(HeaderLabel("Ay")); bar.Controls.Add(_month);
-        bar.Controls.Add(HeaderButton("⚙ Ayarlar", (_, _) => ShowDialog(new SettingsControl(database), "Ayarlar", new Size(850, 760))));
-        bar.Controls.Add(HeaderButton("Personeller", (_, _) => { var control = new EmployeesControl(database); control.EmployeesChanged += (_, _) => _card.ReloadAll(); ShowDialog(control, "Personeller", new Size(720, 600)); }));
-        bar.Controls.Add(HeaderButton("Kilitli Aylar", (_, _) => ShowDialog(new LockedMonthsControl(database), "Kilitli Ayları Yönet", new Size(560, 500))));
-        bar.Controls.Add(HeaderButton("▣ Kaydet", (_, _) => _card.SaveCurrentWeek()));
+        var menu = new FlowLayoutPanel { Dock = DockStyle.Fill, WrapContents = false, AutoScroll = true, BackColor = Color.Transparent };
+        menu.Controls.Add(HeaderLabel("Yıl")); menu.Controls.Add(_year); menu.Controls.Add(HeaderLabel("Ay")); menu.Controls.Add(_month);
+        menu.Controls.Add(HeaderButton("⚙ Ayarlar", (_, _) => ShowDialog(new SettingsControl(database), "Ayarlar", new Size(850, 760))));
+        menu.Controls.Add(HeaderButton("Personeller", (_, _) => { var control = new EmployeesControl(database); control.EmployeesChanged += (_, _) => _card.ReloadAll(); ShowDialog(control, "Personeller", new Size(720, 600)); }));
+        menu.Controls.Add(HeaderButton("Kilitli Aylar", (_, _) => ShowDialog(new LockedMonthsControl(database), "Kilitli Ayları Yönet", new Size(560, 500))));
+        menu.Controls.Add(HeaderButton("▣ Kaydet", (_, _) => _card.SaveCurrentWeek()));
         Button printButton = null!;
         printButton = HeaderButton("▤ Yazdır", async (_, _) => await RunExclusive(printButton, _card.PrintCurrentWeekAsync));
-        bar.Controls.Add(printButton);
-        bar.Controls.Add(HeaderButton("📅 Aylık Puantaj", (_, _) => OpenMonthlyExport(database)));
-        bar.Controls.Add(_clock);
-        bar.Controls.Add(HeaderButton("↻ Yenile", (_, _) => _card.ReloadSettings()));
-        bar.Controls.Add(HeaderButton("× Kapat", (_, _) => Close()));
+        menu.Controls.Add(printButton); menu.Controls.Add(HeaderButton("📅 Aylık Puantaj", (_, _) => OpenMonthlyExport(database)));
+        var right = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 3, BackColor = Color.Transparent };
+        right.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 82)); right.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 76)); right.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        right.Controls.Add(HeaderButton("↻ Yenile", (_, _) => _card.ReloadSettings()), 0, 0);
+        right.Controls.Add(HeaderButton("× Kapat", (_, _) => Close()), 1, 0); right.Controls.Add(_clock, 2, 0); _clock.Dock = DockStyle.Fill;
+        bar.Controls.Add(title, 0, 0); bar.Controls.Add(menu, 1, 0); bar.Controls.Add(right, 2, 0);
         return bar;
     }
 
@@ -73,5 +75,11 @@ public sealed class MainForm : Form
     }
 
     private static Label HeaderLabel(string text) => new() { Text = text, ForeColor = Color.White, AutoSize = true, Margin = new Padding(8, 7, 2, 0) };
-    private static Button HeaderButton(string text, EventHandler click) { var button = new Button { Text = text, AutoSize = true, Height = 32, FlatStyle = FlatStyle.Flat, ForeColor = Color.White, BackColor = Color.FromArgb(18, 28, 40), Margin = new Padding(8, 0, 0, 0) }; button.FlatAppearance.BorderSize = 0; button.Click += click; return button; }
+    private static Button HeaderButton(string text, EventHandler click)
+    {
+        var button = new Button { Text = text, AutoSize = true, Height = 34, FlatStyle = FlatStyle.Flat, ForeColor = Color.White,
+            BackColor = Color.FromArgb(35, 65, 102), Margin = new Padding(6, 1, 0, 0), Cursor = Cursors.Hand };
+        button.FlatAppearance.BorderColor = Color.FromArgb(82, 112, 148); button.FlatAppearance.MouseOverBackColor = Color.FromArgb(48, 87, 132);
+        button.FlatAppearance.MouseDownBackColor = Color.FromArgb(25, 51, 84); button.Click += click; return button;
+    }
 }

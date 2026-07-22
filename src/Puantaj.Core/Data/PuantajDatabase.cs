@@ -5,6 +5,8 @@ namespace Puantaj.Core.Data;
 
 public sealed class PuantajDatabase
 {
+    private static readonly HashSet<string> DefaultAssignmentCodes = new(StringComparer.OrdinalIgnoreCase)
+        { "A", "B", "C", "D", "E", "HT", "RT", "RP", "ÜZ", "Üİ", "Yİ", "Aİ", "G", "İA" };
     private readonly string _connectionString;
 
     public string DatabasePath { get; }
@@ -311,6 +313,41 @@ public sealed class PuantajDatabase
         transaction.Commit();
     }
 
+    public void SynchronizeAssignmentCodes(IReadOnlyList<AssignmentCodeDefinition> definitions)
+    {
+        var normalized = definitions.Select(item => item with { Code = RequireCode(item.Code) }).ToList();
+        if (normalized.Select(item => item.Code).Distinct(StringComparer.OrdinalIgnoreCase).Count() != normalized.Count)
+            throw new ArgumentException("Aynı kod birden fazla kez tanımlanamaz.");
+        using var connection = Open();
+        using var transaction = connection.BeginTransaction();
+        var existing = new List<string>();
+        using (var command = connection.CreateCommand())
+        {
+            command.Transaction = transaction; command.CommandText = "SELECT Code FROM Shifts;";
+            using var reader = command.ExecuteReader(); while (reader.Read()) existing.Add(reader.GetString(0));
+        }
+        var requested = normalized.Select(item => item.Code).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var code in existing.Where(code => !requested.Contains(code)))
+        {
+            if (DefaultAssignmentCodes.Contains(code)) throw new InvalidOperationException($"Varsayılan '{code}' kodu silinemez.");
+            using var check = connection.CreateCommand(); check.Transaction = transaction;
+            check.CommandText = "SELECT COUNT(*) FROM Assignments WHERE Code=$code;"; check.Parameters.AddWithValue("$code", code);
+            if (Convert.ToInt32(check.ExecuteScalar(), CultureInfo.InvariantCulture) > 0)
+                throw new InvalidOperationException($"'{code}' kodu puantaj kayıtlarında kullanıldığı için silinemez.");
+            Execute(connection, "DELETE FROM Shifts WHERE Code=$code;", transaction, ("$code", code));
+        }
+        foreach (var item in normalized)
+            Execute(connection, """
+                INSERT INTO Shifts (Code, Description, StartTime, EndTime, IsWorkShift, DisplayOrder)
+                VALUES ($code,$description,$start,$end,$work,COALESCE((SELECT MAX(DisplayOrder)+1 FROM Shifts),1))
+                ON CONFLICT(Code) DO UPDATE SET Description=excluded.Description, StartTime=excluded.StartTime,
+                    EndTime=excluded.EndTime, IsWorkShift=excluded.IsWorkShift;
+                """, transaction, ("$code", item.Code), ("$description", item.Description.Trim()),
+                ("$start", item.StartTime is null ? null : FormatTime(item.StartTime.Value)),
+                ("$end", item.EndTime is null ? null : FormatTime(item.EndTime.Value)), ("$work", item.IsWorkShift ? 1 : 0));
+        transaction.Commit();
+    }
+
     public void CopyMonthAssignments(long sourceEmployeeId, long targetEmployeeId, int year, int month)
     {
         if (sourceEmployeeId == targetEmployeeId) throw new ArgumentException("Kaynak ve hedef personel farklı olmalıdır.");
@@ -330,6 +367,84 @@ public sealed class PuantajDatabase
             """, transaction, ("$target", targetEmployeeId), ("$updated", DateTimeOffset.UtcNow.ToString("O")),
             ("$source", sourceEmployeeId), ("$from", FormatDate(from)), ("$to", FormatDate(to)));
         transaction.Commit();
+    }
+
+    public void CopyWeekAssignments(long sourceEmployeeId, long targetEmployeeId, DateOnly from, DateOnly to)
+    {
+        if (sourceEmployeeId == targetEmployeeId) throw new ArgumentException("Kaynak ve hedef personel farklı olmalıdır.");
+        if (to < from) throw new ArgumentOutOfRangeException(nameof(to));
+        foreach (var value in DatesByMonth(from, to)) EnsureMonthUnlocked(value.Year, value.Month);
+        using var connection = Open(); using var transaction = connection.BeginTransaction();
+        foreach (var (id, role) in new[] { (sourceEmployeeId, "Kaynak"), (targetEmployeeId, "Hedef") })
+        {
+            using var employee = connection.CreateCommand(); employee.Transaction = transaction;
+            employee.CommandText = "SELECT IsActive FROM Employees WHERE Id=$id;"; employee.Parameters.AddWithValue("$id", id);
+            var active = employee.ExecuteScalar();
+            if (active is null || Convert.ToInt32(active, CultureInfo.InvariantCulture) == 0)
+                throw new InvalidOperationException($"{role} personel aktif değil veya artık mevcut değil.");
+        }
+        using (var source = connection.CreateCommand())
+        {
+            source.Transaction = transaction;
+            source.CommandText = "SELECT COUNT(*) FROM Assignments WHERE EmployeeId=$employee AND WorkDate >= $from AND WorkDate <= $to;";
+            source.Parameters.AddWithValue("$employee", sourceEmployeeId); source.Parameters.AddWithValue("$from", FormatDate(from)); source.Parameters.AddWithValue("$to", FormatDate(to));
+            if (Convert.ToInt32(source.ExecuteScalar(), CultureInfo.InvariantCulture) == 0)
+                throw new InvalidOperationException("Kaynak haftada kopyalanacak puantaj kaydı bulunamadı.");
+        }
+        Execute(connection, "DELETE FROM Assignments WHERE EmployeeId=$employee AND WorkDate >= $from AND WorkDate <= $to;", transaction,
+            ("$employee", targetEmployeeId), ("$from", FormatDate(from)), ("$to", FormatDate(to)));
+        Execute(connection, """
+            INSERT INTO Assignments (EmployeeId,WorkDate,Code,UpdatedAt)
+            SELECT $target,WorkDate,Code,$updated FROM Assignments
+            WHERE EmployeeId=$source AND WorkDate >= $from AND WorkDate <= $to;
+            """, transaction, ("$target", targetEmployeeId), ("$source", sourceEmployeeId),
+            ("$from", FormatDate(from)), ("$to", FormatDate(to)), ("$updated", DateTimeOffset.UtcNow.ToString("O")));
+        transaction.Commit();
+    }
+
+    public void ClearWeekAssignments(long employeeId, DateOnly from, DateOnly to)
+    {
+        if (to < from) throw new ArgumentOutOfRangeException(nameof(to));
+        foreach (var value in DatesByMonth(from, to)) EnsureMonthUnlocked(value.Year, value.Month);
+        using var connection = Open();
+        Execute(connection, "DELETE FROM Assignments WHERE EmployeeId=$employee AND WorkDate >= $from AND WorkDate <= $to;",
+            ("$employee", employeeId), ("$from", FormatDate(from)), ("$to", FormatDate(to)));
+    }
+
+    public void ApplyWeekPatternToMonth(long employeeId, DateOnly sourceMonday, DateOnly sourceFrom, DateOnly sourceTo, int year, int month)
+    {
+        ValidateMonth(year, month); EnsureMonthUnlocked(year, month);
+        var monthFrom = new DateOnly(year, month, 1); var monthTo = monthFrom.AddMonths(1).AddDays(-1);
+        using var connection = Open(); using var transaction = connection.BeginTransaction();
+        var pattern = new Dictionary<int, string>();
+        using (var command = connection.CreateCommand())
+        {
+            command.Transaction = transaction;
+            command.CommandText = "SELECT WorkDate, Code FROM Assignments WHERE EmployeeId=$employee AND WorkDate >= $from AND WorkDate <= $to;";
+            command.Parameters.AddWithValue("$employee", employeeId); command.Parameters.AddWithValue("$from", FormatDate(sourceFrom)); command.Parameters.AddWithValue("$to", FormatDate(sourceTo));
+            using var reader = command.ExecuteReader();
+            while (reader.Read())
+            {
+                var date = DateOnly.ParseExact(reader.GetString(0), "yyyy-MM-dd", CultureInfo.InvariantCulture);
+                pattern[date.DayNumber - sourceMonday.DayNumber] = reader.GetString(1);
+            }
+        }
+        if (pattern.Count == 0) throw new InvalidOperationException("Kaynak haftada kopyalanacak puantaj kaydı bulunamadı.");
+        Execute(connection, "DELETE FROM Assignments WHERE EmployeeId=$employee AND WorkDate >= $from AND WorkDate <= $to;", transaction,
+            ("$employee", employeeId), ("$from", FormatDate(monthFrom)), ("$to", FormatDate(monthTo)));
+        for (var date = monthFrom; date <= monthTo; date = date.AddDays(1))
+        {
+            var offset = ((date.DayNumber - sourceMonday.DayNumber) % 7 + 7) % 7;
+            if (!pattern.TryGetValue(offset, out var code)) continue;
+            Execute(connection, "INSERT INTO Assignments (EmployeeId,WorkDate,Code,UpdatedAt) VALUES ($employee,$date,$code,$updated);", transaction,
+                ("$employee", employeeId), ("$date", FormatDate(date)), ("$code", code), ("$updated", DateTimeOffset.UtcNow.ToString("O")));
+        }
+        transaction.Commit();
+    }
+
+    private static IEnumerable<(int Year, int Month)> DatesByMonth(DateOnly from, DateOnly to)
+    {
+        for (var value = new DateOnly(from.Year, from.Month, 1); value <= to; value = value.AddMonths(1)) yield return (value.Year, value.Month);
     }
 
     public void AssignMany(IEnumerable<long> employeeIds, IEnumerable<DateOnly> dates, string code)
@@ -435,6 +550,74 @@ public sealed class PuantajDatabase
         using var connection = Open();
         Execute(connection, "INSERT OR IGNORE INTO LockedMonths (Year, Month, LockedAt) VALUES ($year,$month,$at);",
             ("$year", year), ("$month", month), ("$at", DateTimeOffset.UtcNow.ToString("O")));
+    }
+
+    public MonthCompletion EvaluateMonthCompletion(int year, int month)
+    {
+        ValidateMonth(year, month);
+        using var connection = Open(); using var transaction = connection.BeginTransaction();
+        var result = EvaluateMonthCompletion(connection, transaction, year, month); transaction.Commit(); return result;
+    }
+
+    public MonthCompletion LockMonthIfComplete(int year, int month)
+    {
+        ValidateMonth(year, month);
+        using var connection = Open(); using var transaction = connection.BeginTransaction();
+        var result = EvaluateMonthCompletion(connection, transaction, year, month);
+        if (result.Missing.Count > 0) { transaction.Rollback(); return result; }
+        Execute(connection, "INSERT OR IGNORE INTO LockedMonths (Year,Month,LockedAt) VALUES ($year,$month,$at);", transaction,
+            ("$year", year), ("$month", month), ("$at", DateTimeOffset.UtcNow.ToString("O")));
+        transaction.Commit(); return result;
+    }
+
+    private static MonthCompletion EvaluateMonthCompletion(SqliteConnection connection, SqliteTransaction transaction, int year, int month)
+    {
+        var from = new DateOnly(year, month, 1); var to = from.AddMonths(1).AddDays(-1);
+        var employees = new List<(long Id, string Name, DateOnly? HireDate)>();
+        using (var command = connection.CreateCommand())
+        {
+            command.Transaction = transaction;
+            command.CommandText = "SELECT Id,FullName,HireDate FROM Employees WHERE IsActive=1 ORDER BY DisplayOrder,FullName;";
+            using var reader = command.ExecuteReader();
+            while (reader.Read()) employees.Add((reader.GetInt64(0), reader.GetString(1), reader.IsDBNull(2) ? null : DateOnly.ParseExact(reader.GetString(2), "yyyy-MM-dd", CultureInfo.InvariantCulture)));
+        }
+        var assignments = new Dictionary<long, Dictionary<DateOnly, string>>();
+        using (var command = connection.CreateCommand())
+        {
+            command.Transaction = transaction;
+            command.CommandText = "SELECT EmployeeId,WorkDate,Code FROM Assignments WHERE WorkDate >= $from AND WorkDate <= $to;";
+            command.Parameters.AddWithValue("$from", FormatDate(from)); command.Parameters.AddWithValue("$to", FormatDate(to));
+            using var reader = command.ExecuteReader();
+            while (reader.Read())
+            {
+                var id = reader.GetInt64(0); if (!assignments.TryGetValue(id, out var values)) assignments[id] = values = [];
+                values[DateOnly.ParseExact(reader.GetString(1), "yyyy-MM-dd", CultureInfo.InvariantCulture)] = reader.GetString(2);
+            }
+        }
+        var endedCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        using (var command = connection.CreateCommand())
+        {
+            command.Transaction = transaction; command.CommandText = "SELECT Code,Description FROM Shifts;";
+            using var reader = command.ExecuteReader();
+            while (reader.Read())
+            {
+                var definition = new AssignmentCodeDefinition(reader.GetString(0), reader.GetString(1), null, null, false, 0);
+                if (definition.IsEmploymentEnded) endedCodes.Add(definition.Code);
+            }
+        }
+        var missing = new List<MissingAttendance>(); var completed = new HashSet<long>();
+        foreach (var employee in employees)
+        {
+            var requiredFrom = employee.HireDate is { } hire && hire > from ? hire : from;
+            if (requiredFrom > to) continue;
+            var values = assignments.GetValueOrDefault(employee.Id) ?? [];
+            var ended = values.Where(item => endedCodes.Contains(item.Value)).Select(item => (DateOnly?)item.Key).Min();
+            var requiredTo = ended is null ? to : ended.Value.AddDays(-1);
+            for (var date = requiredFrom; date <= requiredTo; date = date.AddDays(1))
+                if (!values.ContainsKey(date)) missing.Add(new MissingAttendance(employee.Id, employee.Name, date));
+            if (!missing.Any(item => item.EmployeeId == employee.Id)) completed.Add(employee.Id);
+        }
+        return new MonthCompletion(completed, missing);
     }
 
     public void UnlockMonth(int year, int month)

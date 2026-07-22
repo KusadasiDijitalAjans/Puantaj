@@ -8,6 +8,12 @@ public sealed class WeeklyWorkflowV101Tests : IDisposable
     private readonly string _directory = Path.Combine(Path.GetTempPath(), $"puantaj-v101-{Guid.NewGuid():N}");
     private readonly WeeklyPlanningService _planning = new();
 
+    public static IEnumerable<object[]> WeeklyCopyCases()
+    {
+        foreach (var (year, month) in new[] { (2024, 2), (2025, 2), (2026, 4), (2026, 7), (2026, 8), (2026, 11) })
+            foreach (var week in new WeeklyPlanningService().GetMonthWeeks(year, month)) yield return [year, month, week.Number];
+    }
+
     [Fact]
     public void CopyTargetsAreSafeForEmptySingleAndMultipleWeekLists()
     {
@@ -67,6 +73,48 @@ public sealed class WeeklyWorkflowV101Tests : IDisposable
     }
 
     [Theory]
+    [MemberData(nameof(WeeklyCopyCases))]
+    public void WeeklyPersonnelCopyKeepsExactCalendarWeekAcrossMonthShapes(int year, int month, int weekNumber)
+    {
+        var database = CreateDatabase(); var sourceEmployee = database.AddEmployee("Kaynak"); var targetEmployee = database.AddEmployee("Hedef");
+        database.SaveAssignmentCode("F", "Yeni Vardiya", TimeSpan.FromHours(10), TimeSpan.FromHours(18), true);
+        var week = _planning.GetMonthWeeks(year, month).Single(item => item.Number == weekNumber);
+        var codes = new[] { "F", "HT", "RT", "RP", "Yİ", "Üİ", "G" };
+        var sourceValues = Enumerable.Range(0, week.ActiveTo.DayNumber - week.ActiveFrom.DayNumber + 1)
+            .ToDictionary(offset => week.ActiveFrom.AddDays(offset), offset => codes[(week.ActiveFrom.AddDays(offset).DayNumber - week.Monday.DayNumber) % 7]);
+        database.SaveWeekAssignments(sourceEmployee, week.ActiveFrom, week.ActiveTo, sourceValues, false);
+        database.Assign(targetEmployee, week.ActiveFrom, "A");
+
+        database.CopyWeekAssignments(sourceEmployee, targetEmployee, week.ActiveFrom, week.ActiveTo);
+        database.CopyWeekAssignments(sourceEmployee, targetEmployee, week.ActiveFrom, week.ActiveTo);
+
+        var copied = database.GetAssignments(week.ActiveFrom, week.ActiveTo).Where(item => item.EmployeeId == targetEmployee).ToList();
+        Assert.Equal(sourceValues.Count, copied.Count);
+        Assert.Equal(sourceValues, copied.ToDictionary(item => item.WorkDate, item => item.Code));
+        Assert.All(copied, item => Assert.Equal(month, item.WorkDate.Month));
+    }
+
+    [Fact]
+    public void EmptyWeeklySourceDoesNotAlterExistingTarget()
+    {
+        var database = CreateDatabase(); var source = database.AddEmployee("Kaynak"); var target = database.AddEmployee("Hedef");
+        var week = _planning.GetMonthWeeks(2026, 7)[2]; database.Assign(target, week.ActiveFrom, "A");
+        Assert.Throws<InvalidOperationException>(() => database.CopyWeekAssignments(source, target, week.ActiveFrom, week.ActiveTo));
+        Assert.Equal("A", Assert.Single(database.GetAssignments(week.ActiveFrom, week.ActiveTo)).Code);
+    }
+
+    [Fact]
+    public void WeeklyCopyRejectsSameOrInactivePersonnelWithoutPartialChanges()
+    {
+        var database = CreateDatabase(); var source = database.AddEmployee("Kaynak"); var target = database.AddEmployee("Hedef");
+        var week = _planning.GetMonthWeeks(2026, 7)[1]; database.Assign(source, week.ActiveFrom, "A"); database.Assign(target, week.ActiveFrom, "HT");
+        Assert.Throws<ArgumentException>(() => database.CopyWeekAssignments(source, source, week.ActiveFrom, week.ActiveTo));
+        database.SetEmployeeActive(target, false);
+        Assert.Throws<InvalidOperationException>(() => database.CopyWeekAssignments(source, target, week.ActiveFrom, week.ActiveTo));
+        Assert.Equal("HT", database.GetAssignments(week.ActiveFrom, week.ActiveTo).Single(item => item.EmployeeId == target).Code);
+    }
+
+    [Theory]
     [InlineData(2025, 2, 28)]
     [InlineData(2024, 2, 29)]
     [InlineData(2026, 4, 30)]
@@ -97,6 +145,55 @@ public sealed class WeeklyWorkflowV101Tests : IDisposable
         var database = CreateDatabase(); var employee = database.AddEmployee("Personel"); var date = new DateOnly(2026, 8, 3); database.Assign(employee, date, "A");
         var selection = new WeeklySelectionModel(); selection.Select(date, "Yİ"); selection.Clear();
         Assert.Empty(selection.Values); Assert.Equal("A", database.GetAssignments(date, date).Single().Code);
+    }
+
+    [Fact]
+    public void ClearingWeekImmediatelyRemovesOnlyThatWeeksPersistedAssignments()
+    {
+        var database = CreateDatabase(); var employee = database.AddEmployee("Personel");
+        var weeks = _planning.GetMonthWeeks(2026, 7); var first = weeks[0]; var second = weeks[1];
+        database.SaveWeekAssignments(employee, first.ActiveFrom, first.ActiveTo, _planning.BuildWeek(first, "A", new Dictionary<DateOnly, string>()), false);
+        database.SaveWeekAssignments(employee, second.ActiveFrom, second.ActiveTo, _planning.BuildWeek(second, "B", new Dictionary<DateOnly, string>()), false);
+
+        database.ClearWeekAssignments(employee, first.ActiveFrom, first.ActiveTo);
+
+        var month = database.GetAssignments(new DateOnly(2026, 7, 1), new DateOnly(2026, 7, 31));
+        Assert.DoesNotContain(month, item => item.WorkDate >= first.ActiveFrom && item.WorkDate <= first.ActiveTo);
+        Assert.Contains(month, item => item.WorkDate >= second.ActiveFrom && item.WorkDate <= second.ActiveTo);
+    }
+
+    [Theory]
+    [InlineData(2024, 2, 29)]
+    [InlineData(2025, 2, 28)]
+    [InlineData(2026, 4, 30)]
+    [InlineData(2026, 7, 31)]
+    public void WeekPatternAtomicallyFillsEveryValidMonthDayWithoutDuplicates(int year, int month, int days)
+    {
+        var database = CreateDatabase(); var employee = database.AddEmployee("Personel");
+        var source = _planning.GetMonthWeeks(year, month).First(week => week.ActiveTo.DayNumber - week.ActiveFrom.DayNumber == 6);
+        var values = _planning.BuildWeek(source, "A", new Dictionary<DateOnly, string> { [source.Monday.AddDays(5)] = "HT", [source.Monday.AddDays(6)] = "RT" });
+        database.SaveWeekAssignments(employee, source.ActiveFrom, source.ActiveTo, values, false);
+
+        database.ApplyWeekPatternToMonth(employee, source.Monday, source.ActiveFrom, source.ActiveTo, year, month);
+        database.ApplyWeekPatternToMonth(employee, source.Monday, source.ActiveFrom, source.ActiveTo, year, month);
+
+        var result = database.GetAssignments(new DateOnly(year, month, 1), new DateOnly(year, month, days));
+        Assert.Equal(days, result.Count); Assert.Equal(days, result.Select(item => item.WorkDate).Distinct().Count());
+        Assert.All(result.Where(item => item.WorkDate.DayOfWeek == DayOfWeek.Saturday), item => Assert.Equal("HT", item.Code));
+        Assert.All(result.Where(item => item.WorkDate.DayOfWeek == DayOfWeek.Sunday), item => Assert.Equal("RT", item.Code));
+    }
+
+    [Fact]
+    public void CustomShiftDeletionIsPersistentAndReferencedShiftIsRejected()
+    {
+        var database = CreateDatabase(); database.SaveAssignmentCode("F", "Vardiya F", TimeSpan.FromHours(7), TimeSpan.FromHours(15), true);
+        var definitions = database.GetAssignmentCodes().Where(item => item.Code != "F").ToList();
+        database.SynchronizeAssignmentCodes(definitions);
+        Assert.DoesNotContain(database.GetAssignmentCodes(), item => item.Code == "F");
+        database.SaveAssignmentCode("F", "Vardiya F", TimeSpan.FromHours(7), TimeSpan.FromHours(15), true);
+        var employee = database.AddEmployee("Personel"); database.Assign(employee, new DateOnly(2026, 7, 1), "F");
+        Assert.Throws<InvalidOperationException>(() => database.SynchronizeAssignmentCodes(definitions));
+        Assert.Contains(database.GetAssignmentCodes(), item => item.Code == "F");
     }
 
     [Fact]
