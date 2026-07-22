@@ -18,6 +18,7 @@ internal static class ExcelBranding
     public static void ApplyMonthly(IXLWorksheet sheet, AppSettings? settings)
     {
         if (settings is null) return;
+        foreach (var picture in sheet.Pictures.ToList()) picture.Delete();
         AddLogoInRange(sheet, settings, "C1:C4");
         WriteSignature(sheet, "E52", "E53", settings.HumanResourcesManager, settings.HumanResourcesTitle);
         WriteSignature(sheet, "AC52", "AC53", settings.DepartmentManager, settings.DepartmentManagerTitle);

@@ -128,14 +128,14 @@ public sealed class MonthlyExcelExporter
         cell.Style.Fill.PatternType = XLFillPatternValues.None;
         cell.Style.Fill.BackgroundColor = XLColor.NoColor;
         cell.Style.Font.FontColor = XLColor.Black;
+        cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+        cell.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
     }
 
     private static void ApplyAttendanceColor(IXLCell cell, AssignmentCodeDefinition definition)
     {
         ClearAttendanceColor(cell);
-        if (!definition.IsWorkShift && !definition.IsEmploymentEnded &&
-            !definition.Code.Equals("HT", StringComparison.OrdinalIgnoreCase) &&
-            !definition.Code.Equals("RT", StringComparison.OrdinalIgnoreCase))
+        if (!definition.IsWorkShift && !definition.IsEmploymentEnded)
         {
             cell.Style.Fill.PatternType = XLFillPatternValues.Solid;
             cell.Style.Fill.BackgroundColor = XLColor.Yellow;
