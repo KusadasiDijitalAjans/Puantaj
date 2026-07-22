@@ -1,4 +1,5 @@
 using System.IO.Compression;
+using Microsoft.Data.Sqlite;
 using Puantaj.Core.Backup;
 using Puantaj.Core.Data;
 
@@ -94,5 +95,9 @@ public sealed class SettingsLockBackupTests : IDisposable
         var database = new PuantajDatabase(Path.Combine(_directory, $"{Guid.NewGuid():N}.db")); database.Initialize(); return database;
     }
 
-    public void Dispose() { try { if (Directory.Exists(_directory)) Directory.Delete(_directory, true); } catch { } }
+    public void Dispose()
+    {
+        SqliteConnection.ClearAllPools();
+        if (Directory.Exists(_directory)) Directory.Delete(_directory, true);
+    }
 }
