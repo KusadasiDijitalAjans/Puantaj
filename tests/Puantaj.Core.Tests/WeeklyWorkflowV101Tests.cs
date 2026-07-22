@@ -44,6 +44,28 @@ public sealed class WeeklyWorkflowV101Tests : IDisposable
         Assert.Equal("Yİ", result.Single(item => item.WorkDate == week.ActiveFrom.AddDays(2)).Code);
     }
 
+    [Fact]
+    public void CopyMonthReplacesTargetAssignmentsWithoutDuplicates()
+    {
+        var database = CreateDatabase();
+        var source = database.AddEmployee("Kaynak");
+        var target = database.AddEmployee("Hedef");
+        database.Assign(source, new DateOnly(2026, 8, 1), "A");
+        database.Assign(source, new DateOnly(2026, 8, 2), "HT");
+        database.Assign(source, new DateOnly(2026, 8, 3), "RP");
+        database.Assign(target, new DateOnly(2026, 8, 1), "Yİ");
+        database.Assign(target, new DateOnly(2026, 8, 4), "RT");
+
+        database.CopyMonthAssignments(source, target, 2026, 8);
+        database.CopyMonthAssignments(source, target, 2026, 8);
+
+        var copied = database.GetAssignments(new DateOnly(2026, 8, 1), new DateOnly(2026, 8, 31))
+            .Where(item => item.EmployeeId == target).OrderBy(item => item.WorkDate).ToList();
+        Assert.Equal(3, copied.Count);
+        Assert.Equal(["A", "HT", "RP"], copied.Select(item => item.Code));
+        Assert.DoesNotContain(copied, item => item.WorkDate.Day == 4);
+    }
+
     [Theory]
     [InlineData(2025, 2, 28)]
     [InlineData(2024, 2, 29)]

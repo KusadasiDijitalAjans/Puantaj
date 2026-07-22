@@ -311,6 +311,27 @@ public sealed class PuantajDatabase
         transaction.Commit();
     }
 
+    public void CopyMonthAssignments(long sourceEmployeeId, long targetEmployeeId, int year, int month)
+    {
+        if (sourceEmployeeId == targetEmployeeId) throw new ArgumentException("Kaynak ve hedef personel farklı olmalıdır.");
+        ValidateMonth(year, month);
+        EnsureMonthUnlocked(year, month);
+        var from = new DateOnly(year, month, 1);
+        var to = from.AddMonths(1).AddDays(-1);
+        using var connection = Open();
+        using var transaction = connection.BeginTransaction();
+        Execute(connection, "DELETE FROM Assignments WHERE EmployeeId=$employee AND WorkDate >= $from AND WorkDate <= $to;",
+            transaction, ("$employee", targetEmployeeId), ("$from", FormatDate(from)), ("$to", FormatDate(to)));
+        Execute(connection, """
+            INSERT INTO Assignments (EmployeeId, WorkDate, Code, UpdatedAt)
+            SELECT $target, WorkDate, Code, $updated
+            FROM Assignments
+            WHERE EmployeeId=$source AND WorkDate >= $from AND WorkDate <= $to;
+            """, transaction, ("$target", targetEmployeeId), ("$updated", DateTimeOffset.UtcNow.ToString("O")),
+            ("$source", sourceEmployeeId), ("$from", FormatDate(from)), ("$to", FormatDate(to)));
+        transaction.Commit();
+    }
+
     public void AssignMany(IEnumerable<long> employeeIds, IEnumerable<DateOnly> dates, string code)
     {
         var ids = employeeIds.Distinct().ToArray();

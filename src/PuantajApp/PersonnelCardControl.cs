@@ -25,6 +25,7 @@ internal sealed class PersonnelCardControl : UserControl
     private readonly Button _clearButton;
     private readonly Button _generateButton;
     private readonly Button _copyButton;
+    private readonly Button _copyMonthButton;
     private readonly DataGridView _monthly = new() { Dock = DockStyle.Fill, ReadOnly = true, AllowUserToAddRows = false, RowHeadersVisible = false, ColumnHeadersHeight = 42, BackgroundColor = Color.White };
     private readonly MonthlySummaryPanel _monthlySummary = new();
     private IReadOnlyList<AssignmentCodeDefinition> _codes = [];
@@ -39,6 +40,7 @@ internal sealed class PersonnelCardControl : UserControl
         _clearButton = Button("▣  Tümünü Temizle", (_, _) => ClearSelectionsWithConfirmation());
         _generateButton = Button("✓  Haftayı Oluştur", (_, _) => GenerateWeek(), Color.FromArgb(13, 104, 220), Color.White);
         _copyButton = Button("▣  Haftayı Kopyala", (_, _) => CopyWeek());
+        _copyMonthButton = Button("▣  Ayı Kopyala", (_, _) => CopyMonth());
         Dock = DockStyle.Fill; BackColor = Color.FromArgb(246, 247, 249); Font = new Font("Segoe UI", 9);
         Controls.Add(BuildLayout());
         _search.TextChanged += (_, _) => LoadEmployees();
@@ -97,8 +99,8 @@ internal sealed class PersonnelCardControl : UserControl
     {
         var panel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(6, 0, 0, 6) };
         var weekBar = new Panel { Dock = DockStyle.Top, Height = 70 };
-        _copyButton.Dock = DockStyle.Right; _copyButton.Width = 155; _weeks.Dock = DockStyle.Fill;
-        weekBar.Controls.Add(_weeks); weekBar.Controls.Add(_copyButton);
+        _copyButton.Dock = DockStyle.Right; _copyButton.Width = 155; _copyMonthButton.Dock = DockStyle.Right; _copyMonthButton.Width = 135; _weeks.Dock = DockStyle.Fill;
+        weekBar.Controls.Add(_weeks); weekBar.Controls.Add(_copyMonthButton); weekBar.Controls.Add(_copyButton);
         panel.Controls.Add(BuildMiddle()); panel.Controls.Add(weekBar); return panel;
     }
 
@@ -186,7 +188,7 @@ internal sealed class PersonnelCardControl : UserControl
         ClearMatrix();
         if (SelectedEmployee() is not { } employee || SelectedWeek() is not { } week)
         {
-            _editButton.Enabled = false; _copyButton.Enabled = false; return;
+            _editButton.Enabled = false; _copyButton.Enabled = false; _copyMonthButton.Enabled = false; return;
         }
         for (var offset = 0; offset < 7; offset++)
         {
@@ -196,6 +198,7 @@ internal sealed class PersonnelCardControl : UserControl
         SetMatrixEnabledDays(week);
         var existing = _database.GetAssignments(week.ActiveFrom, week.ActiveTo).Where(item => item.EmployeeId == employee.Id).ToList();
         _editButton.Enabled = existing.Count > 0; _copyButton.Enabled = _planning.GetCopyTargets(_monthWeeks, week).Count > 0;
+        _copyMonthButton.Enabled = _database.GetEmployees().Count > 1;
         _clearButton.Enabled = existing.Count == 0 || _editing; _defaultShift.Enabled = existing.Count == 0 || _editing;
         _generateButton.Text = _editing ? "✓  Değişiklikleri Kaydet" : "✓  Haftayı Oluştur";
         if (existing.Count > 0) LoadExistingSelections(existing);
@@ -297,6 +300,29 @@ internal sealed class PersonnelCardControl : UserControl
         catch (Exception exception) { MessageBox.Show(exception.Message, "Hafta kopyalanamadı", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
     }
 
+    private void CopyMonth()
+    {
+        var sourceEmployee = SelectedEmployee();
+        if (sourceEmployee is null) return;
+        var sourceAssignments = MonthAssignments(sourceEmployee.Id);
+        if (sourceAssignments.Count == 0)
+        {
+            MessageBox.Show("Kaynak personelin seçili ayda kaydı bulunamadı.", "Ayı Kopyala", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+        using var dialog = new CopyMonthForm(_database.GetEmployees(), sourceEmployee, $"{MonthName()} {_year()}");
+        if (dialog.ShowDialog(this) != DialogResult.OK || dialog.TargetEmployee is not { } targetEmployee) return;
+        try
+        {
+            var existing = MonthAssignments(targetEmployee.Id).Count > 0;
+            if (existing && MessageBox.Show("Hedef personelin seçili aya ait kayıtları kaynak personelin kayıtlarıyla değiştirilecek. Devam edilsin mi?",
+                "Kopyalama onayı", MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
+            _database.CopyMonthAssignments(sourceEmployee.Id, targetEmployee.Id, _year(), _month());
+            RefreshPerson();
+        }
+        catch (Exception exception) { MessageBox.Show(exception.Message, "Ay kopyalanamadı", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
+    }
+
     private void MatrixValueChanged(object? sender, DataGridViewCellEventArgs args)
     {
         if (_loading || args.RowIndex < 0 || args.ColumnIndex <= 0 || !Convert.ToBoolean(_matrix.Rows[args.RowIndex].Cells[args.ColumnIndex].Value)) return;
@@ -347,8 +373,8 @@ internal sealed class CopyWeekForm : Form
     {
         Text = "Haftayı Kopyala"; StartPosition = FormStartPosition.CenterParent; ClientSize = new Size(430, 430);
         var items = targetWeeks.Select(item => new WeekItem(item)).ToList();
-        _week.DataSource = items; _week.DisplayMember = nameof(WeekItem.Text);
-        _week.SelectedIndex = items.Count == 0 ? -1 : 0;
+        _week.Items.AddRange(items.Cast<object>().ToArray());
+        if (_week.Items.Count > 0) _week.SelectedIndex = 0;
         foreach (var employee in employees) { var index = _employees.Items.Add(new EmployeeItem(employee)); if (employee.Id == selected.Id) _employees.SetItemChecked(index, true); }
         var ok = new Button { Text = "Kopyala", Dock = DockStyle.Bottom, Height = 42, DialogResult = DialogResult.OK };
         ok.Enabled = items.Count > 0;
@@ -356,4 +382,25 @@ internal sealed class CopyWeekForm : Form
     }
     private sealed record EmployeeItem(Employee Value) { public override string ToString() => Value.FullName; }
     private sealed record WeekItem(MonthWeek Value) { public string Text => $"{Value.Number}. Hafta ({Value.ActiveFrom:dd.MM}–{Value.ActiveTo:dd.MM})"; public static implicit operator MonthWeek(WeekItem value) => value.Value; }
+}
+
+internal sealed class CopyMonthForm : Form
+{
+    private readonly ComboBox _targetEmployee = new() { Dock = DockStyle.Top, DropDownStyle = ComboBoxStyle.DropDownList };
+    public Employee? TargetEmployee => (_targetEmployee.SelectedItem as EmployeeItem)?.Value;
+
+    public CopyMonthForm(IReadOnlyList<Employee> employees, Employee sourceEmployee, string month)
+    {
+        Text = "Ayı Kopyala"; StartPosition = FormStartPosition.CenterParent; ClientSize = new Size(430, 180);
+        var targets = employees.Where(item => item.Id != sourceEmployee.Id).Select(item => new EmployeeItem(item)).Cast<object>().ToArray();
+        _targetEmployee.Items.AddRange(targets);
+        if (_targetEmployee.Items.Count > 0) _targetEmployee.SelectedIndex = 0;
+        var ok = new Button { Text = "Kopyala", Dock = DockStyle.Bottom, Height = 42, DialogResult = DialogResult.OK, Enabled = targets.Length > 0 };
+        Controls.Add(_targetEmployee);
+        Controls.Add(new Label { Text = "Hedef personel", Dock = DockStyle.Top, Height = 24 });
+        Controls.Add(new Label { Text = $"Kaynak: {sourceEmployee.FullName}  •  {month}", Dock = DockStyle.Top, Height = 36, Padding = new Padding(0, 8, 0, 0) });
+        Controls.Add(ok); AcceptButton = ok;
+    }
+
+    private sealed record EmployeeItem(Employee Value) { public override string ToString() => Value.FullName; }
 }
