@@ -11,6 +11,19 @@ internal sealed class ExcelNotInstalledException : Exception
 [SupportedOSPlatform("windows")]
 internal sealed class ExcelInteropService
 {
+    public static Task RunStaAsync(Action action)
+    {
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var thread = new Thread(() =>
+        {
+            try { action(); completion.SetResult(); }
+            catch (Exception exception) { completion.SetException(exception); }
+        }) { IsBackground = true, Name = "Puantaj Excel" };
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        return completion.Task;
+    }
+
     public void ExportPdf(string excelPath, string pdfPath)
     {
         dynamic? application = null;

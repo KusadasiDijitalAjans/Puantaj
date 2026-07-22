@@ -16,6 +16,7 @@ internal sealed class WeeklyPlanControl : UserControl
     private readonly string _hotelName;
     private readonly string _departmentName;
     private readonly IReadOnlyList<AssignmentCodeDefinition> _codes;
+    private bool _exporting;
 
     public WeeklyPlanControl(PuantajDatabase database, string hotelName, string departmentName)
     {
@@ -47,9 +48,9 @@ internal sealed class WeeklyPlanControl : UserControl
             top.Controls.Add(_bulkDays[index]);
         }
         top.Controls.Add(ActionButton("Seçili Personele Uygula", (_, _) => ApplyBulk()));
-        top.Controls.Add(ActionButton("Excel Olarak Kaydet", (_, _) => SaveExcel()));
-        top.Controls.Add(ActionButton("PDF Olarak Kaydet", (_, _) => SavePdf()));
-        top.Controls.Add(ActionButton("Yazdır", (_, _) => Print()));
+        top.Controls.Add(ActionButton("Excel Olarak Kaydet", async (_, _) => await RunExportAsync(SaveExcelAsync)));
+        top.Controls.Add(ActionButton("PDF Olarak Kaydet", async (_, _) => await RunExportAsync(SavePdfAsync)));
+        top.Controls.Add(ActionButton("Yazdır", async (_, _) => await RunExportAsync(PrintAsync)));
         Controls.Add(_grid);
         Controls.Add(top);
         Reload();
@@ -138,43 +139,56 @@ internal sealed class WeeklyPlanControl : UserControl
         catch (Exception exception) { MessageBox.Show(exception.Message, "Plan değiştirilemedi", MessageBoxButtons.OK, MessageBoxIcon.Warning); Reload(); }
     }
 
-    private string CreateExcel(string outputPath)
+    private Task<string> CreateExcelAsync(string outputPath)
     {
         var monday = CalendarHelper.StartOfWeek(DateOnly.FromDateTime(_weekStart.Value));
         var templates = Path.Combine(AppContext.BaseDirectory, "templates");
-        return new WeeklyExcelExporter().Export(WeeklyExcelExporter.FindWeeklyTemplate(templates), outputPath,
-            _hotelName, _departmentName, monday, _database.GetEmployees(), _database.GetAssignments(monday, monday.AddDays(6)), _database.GetAssignmentCodes(), _database.GetSettings());
+        var template = WeeklyExcelExporter.FindWeeklyTemplate(templates);
+        var employees = _database.GetEmployees();
+        var assignments = _database.GetAssignments(monday, monday.AddDays(6));
+        var codes = _database.GetAssignmentCodes();
+        var settings = _database.GetSettings();
+        return Task.Run(() => new WeeklyExcelExporter().Export(template, outputPath,
+            _hotelName, _departmentName, monday, employees, assignments, codes, settings));
     }
 
-    private void SaveExcel()
+    private async Task RunExportAsync(Func<Task> action)
+    {
+        if (_exporting) return;
+        _exporting = true;
+        try { await action(); }
+        finally { _exporting = false; }
+    }
+
+    private async Task SaveExcelAsync()
     {
         try
         {
             var monday = CalendarHelper.StartOfWeek(DateOnly.FromDateTime(_weekStart.Value));
             using var dialog = new SaveFileDialog { Filter = "Excel dosyası (*.xlsx)|*.xlsx", FileName = WeeklyExcelExporter.CreateOutputFileName(_departmentName, monday) };
             if (dialog.ShowDialog(this) != DialogResult.OK) return;
-            CreateExcel(dialog.FileName);
+            await CreateExcelAsync(dialog.FileName);
             MessageBox.Show($"Excel oluşturuldu:\n{dialog.FileName}", "Puantaj", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
         catch (Exception exception) { ShowOutputError(exception); }
     }
 
-    private void SavePdf()
+    private async Task SavePdfAsync()
     {
         var monday = CalendarHelper.StartOfWeek(DateOnly.FromDateTime(_weekStart.Value));
         var pdfName = Path.ChangeExtension(WeeklyExcelExporter.CreateOutputFileName(_departmentName, monday), ".pdf");
         using var dialog = new SaveFileDialog { Filter = "PDF dosyası (*.pdf)|*.pdf", FileName = pdfName };
         if (dialog.ShowDialog(this) != DialogResult.OK) return;
-        CreatePdf(dialog.FileName);
+        await CreatePdfAsync(dialog.FileName);
     }
 
-    private void Print()
+    private async Task PrintAsync()
     {
         var temporary = Path.Combine(Path.GetTempPath(), $"puantaj-weekly-{Guid.NewGuid():N}.xlsx");
         try
         {
-            CreateExcel(temporary);
-            new ExcelInteropService().PrintWithDialog(temporary);
+            await CreateExcelAsync(temporary);
+            await ExcelInteropService.RunStaAsync(() => new ExcelInteropService().PrintWithDialog(temporary));
         }
         catch (ExcelNotInstalledException)
         {
@@ -184,13 +198,13 @@ internal sealed class WeeklyPlanControl : UserControl
         finally { TryDelete(temporary); }
     }
 
-    private void CreatePdf(string pdfPath)
+    private async Task CreatePdfAsync(string pdfPath)
     {
         var temporary = Path.Combine(Path.GetTempPath(), $"puantaj-weekly-{Guid.NewGuid():N}.xlsx");
         try
         {
-            CreateExcel(temporary);
-            new ExcelInteropService().ExportPdf(temporary, pdfPath);
+            await CreateExcelAsync(temporary);
+            await ExcelInteropService.RunStaAsync(() => new ExcelInteropService().ExportPdf(temporary, pdfPath));
             MessageBox.Show($"PDF oluşturuldu:\n{pdfPath}", "Puantaj", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
         catch (ExcelNotInstalledException)

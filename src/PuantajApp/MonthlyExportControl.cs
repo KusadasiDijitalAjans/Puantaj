@@ -22,9 +22,9 @@ internal sealed class MonthlyExportControl : UserControl
         _month = month;
         _hotelName = hotelName;
         _departmentName = departmentName;
-        _create.Click += (_, _) => RunExclusive(SaveExcel);
-        _pdf.Click += (_, _) => RunExclusive(SavePdf);
-        _print.Click += (_, _) => RunExclusive(Print);
+        _create.Click += async (_, _) => await RunExclusive(SaveExcelAsync);
+        _pdf.Click += async (_, _) => await RunExclusive(SavePdfAsync);
+        _print.Click += async (_, _) => await RunExclusive(PrintAsync);
         var panel = new FlowLayoutPanel { Dock = DockStyle.Top, Padding = new Padding(20), Height = 100 };
         panel.Controls.Add(_selection);
         panel.Controls.Add(_create);
@@ -34,17 +34,17 @@ internal sealed class MonthlyExportControl : UserControl
         UpdateSelection();
     }
 
-    private void RunExclusive(Action action)
+    private async Task RunExclusive(Func<Task> action)
     {
         _create.Enabled = _pdf.Enabled = _print.Enabled = false;
-        try { action(); }
+        try { await action(); }
         finally { _create.Enabled = _pdf.Enabled = _print.Enabled = true; }
     }
 
     public void UpdateSelection() =>
         _selection.Text = $"{_year()} yılı, {_month():00}. ay için aylık puantaj oluştur:  ";
 
-    private string CreateExcel(string outputPath)
+    private Task<string> CreateExcelAsync(string outputPath)
     {
         var year = _year();
         var month = _month();
@@ -52,11 +52,15 @@ internal sealed class MonthlyExportControl : UserControl
         var template = MonthlyExcelExporter.FindMonthlyTemplate(templatesDirectory);
         var from = new DateOnly(year, month, 1);
         var to = new DateOnly(year, month, DateTime.DaysInMonth(year, month));
-        return new MonthlyExcelExporter().Export(template, outputPath, _hotelName, _departmentName, year, month,
-            _database.GetEmployeesForPeriod(from, to), _database.GetAssignments(from, to), _database.GetAssignmentCodes(), _database.GetSettings());
+        var employees = _database.GetEmployeesForPeriod(from, to);
+        var assignments = _database.GetAssignments(from, to);
+        var codes = _database.GetAssignmentCodes();
+        var settings = _database.GetSettings();
+        return Task.Run(() => new MonthlyExcelExporter().Export(template, outputPath, _hotelName, _departmentName,
+            year, month, employees, assignments, codes, settings));
     }
 
-    private void SaveExcel()
+    private async Task SaveExcelAsync()
     {
         try
         {
@@ -65,7 +69,7 @@ internal sealed class MonthlyExportControl : UserControl
             var fileName = MonthlyExcelExporter.CreateOutputFileName(_departmentName, year, month);
             using var dialog = new SaveFileDialog { Filter = "Excel dosyası (*.xlsx)|*.xlsx", FileName = fileName };
             if (dialog.ShowDialog(this) != DialogResult.OK) return;
-            CreateExcel(dialog.FileName);
+            await CreateExcelAsync(dialog.FileName);
             MessageBox.Show($"Excel oluşturuldu:\n{dialog.FileName}", "Puantaj", MessageBoxButtons.OK, MessageBoxIcon.Information);
             AskToLockMonth();
         }
@@ -75,7 +79,7 @@ internal sealed class MonthlyExportControl : UserControl
         }
     }
 
-    private void SavePdf()
+    private async Task SavePdfAsync()
     {
         var pdfName = Path.ChangeExtension(MonthlyExcelExporter.CreateOutputFileName(_departmentName, _year(), _month()), ".pdf");
         using var dialog = new SaveFileDialog { Filter = "PDF dosyası (*.pdf)|*.pdf", FileName = pdfName };
@@ -83,8 +87,8 @@ internal sealed class MonthlyExportControl : UserControl
         var temporary = Path.Combine(Path.GetTempPath(), $"puantaj-monthly-{Guid.NewGuid():N}.xlsx");
         try
         {
-            CreateExcel(temporary);
-            new ExcelInteropService().ExportPdf(temporary, dialog.FileName);
+            await CreateExcelAsync(temporary);
+            await ExcelInteropService.RunStaAsync(() => new ExcelInteropService().ExportPdf(temporary, dialog.FileName));
             MessageBox.Show($"PDF oluşturuldu:\n{dialog.FileName}", "Puantaj", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
         catch (ExcelNotInstalledException)
@@ -98,13 +102,13 @@ internal sealed class MonthlyExportControl : UserControl
         finally { TryDelete(temporary); }
     }
 
-    private void Print()
+    private async Task PrintAsync()
     {
         var temporary = Path.Combine(Path.GetTempPath(), $"puantaj-monthly-{Guid.NewGuid():N}.xlsx");
         try
         {
-            CreateExcel(temporary);
-            new ExcelInteropService().PrintWithDialog(temporary);
+            await CreateExcelAsync(temporary);
+            await ExcelInteropService.RunStaAsync(() => new ExcelInteropService().PrintWithDialog(temporary));
         }
         catch (ExcelNotInstalledException)
         {

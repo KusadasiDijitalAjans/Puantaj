@@ -37,7 +37,7 @@ public sealed class MainForm : Form
         bar.Controls.Add(HeaderButton("Kilitli Aylar", (_, _) => ShowDialog(new LockedMonthsControl(database), "Kilitli Ayları Yönet", new Size(560, 500))));
         bar.Controls.Add(HeaderButton("▣ Kaydet", (_, _) => _card.SaveCurrentWeek()));
         Button printButton = null!;
-        printButton = HeaderButton("▤ Yazdır", (_, _) => RunExclusive(printButton, () => _card.PrintCurrentWeek()));
+        printButton = HeaderButton("▤ Yazdır", async (_, _) => await RunExclusive(printButton, _card.PrintCurrentWeekAsync));
         bar.Controls.Add(printButton);
         bar.Controls.Add(HeaderButton("📅 Aylık Puantaj", (_, _) => OpenMonthlyExport(database)));
         bar.Controls.Add(_clock);
@@ -59,10 +59,10 @@ public sealed class MainForm : Form
         _clock.Text = $"{now:dd MMMM yyyy, dddd}   ◷  {now:HH:mm:ss}";
     }
 
-    private static void RunExclusive(Control control, Action action)
+    private static async Task RunExclusive(Control control, Func<Task> action)
     {
         control.Enabled = false;
-        try { action(); }
+        try { await action(); }
         finally { control.Enabled = true; }
     }
 

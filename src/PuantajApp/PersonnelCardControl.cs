@@ -71,16 +71,18 @@ internal sealed class PersonnelCardControl : UserControl
 
     public void SaveCurrentWeek() => GenerateWeek();
 
-    public void PrintCurrentWeek()
+    public async Task PrintCurrentWeekAsync()
     {
         var employee = SelectedEmployee(); if (employee is null || SelectedWeek() is not { } week) return;
         var temp = Path.Combine(Path.GetTempPath(), $"puantaj-card-{Guid.NewGuid():N}.xlsx");
         try
         {
             var template = WeeklyExcelExporter.FindWeeklyTemplate(Path.Combine(AppContext.BaseDirectory, "templates"));
-            new WeeklyExcelExporter().Export(template, temp, _hotel, _department, week.Monday, [employee],
-                _database.GetAssignments(week.Monday, week.Sunday).Where(item => item.EmployeeId == employee.Id).ToList(), _codes, _database.GetSettings());
-            new ExcelInteropService().PrintWithDialog(temp);
+            var assignments = _database.GetAssignments(week.Monday, week.Sunday).Where(item => item.EmployeeId == employee.Id).ToList();
+            var settings = _database.GetSettings();
+            await Task.Run(() => new WeeklyExcelExporter().Export(template, temp, _hotel, _department, week.Monday,
+                [employee], assignments, _codes, settings));
+            await ExcelInteropService.RunStaAsync(() => new ExcelInteropService().PrintWithDialog(temp));
         }
         catch (Exception exception) { MessageBox.Show(exception.Message, "Yazdırma hatası", MessageBoxButtons.OK, MessageBoxIcon.Error); }
         finally { try { File.Delete(temp); } catch { } }
@@ -373,11 +375,12 @@ internal sealed class PersonnelCardControl : UserControl
         var selected = Convert.ToBoolean(args.FormattedValue);
         using var fill = new SolidBrush(selected ? Color.FromArgb(13, 104, 220) : Color.White);
         using var border = new Pen(selected ? Color.FromArgb(13, 104, 220) : Color.FromArgb(154, 165, 180), 1.5f);
-        args.Graphics.FillRectangle(fill, bounds); args.Graphics.DrawRectangle(border, bounds);
+        var graphics = args.Graphics ?? throw new InvalidOperationException("Hücre çizim yüzeyi oluşturulamadı.");
+        graphics.FillRectangle(fill, bounds); graphics.DrawRectangle(border, bounds);
         if (selected)
         {
             using var tick = new Pen(Color.White, 2f) { StartCap = System.Drawing.Drawing2D.LineCap.Round, EndCap = System.Drawing.Drawing2D.LineCap.Round };
-            args.Graphics.DrawLines(tick, [new Point(bounds.Left + 4, bounds.Top + 9), new Point(bounds.Left + 8, bounds.Bottom - 4), new Point(bounds.Right - 3, bounds.Top + 4)]);
+            graphics.DrawLines(tick, new Point[] { new(bounds.Left + 4, bounds.Top + 9), new(bounds.Left + 8, bounds.Bottom - 4), new(bounds.Right - 3, bounds.Top + 4) });
         }
         args.Handled = true;
     }
