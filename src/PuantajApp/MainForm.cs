@@ -37,6 +37,7 @@ public sealed class MainForm : Form
         bar.Controls.Add(HeaderButton("📅 Aylık Puantaj", (_, _) =>
             ShowDialog(new MonthlyExportControl(database, () => (int)_year.Value, () => _month.SelectedIndex + 1, settings.HotelName, settings.DepartmentName),
                 "Aylık Puantaj", new Size(560, 220))));
+        bar.Controls.Add(HeaderButton("↻ Yenile", (_, _) => _card.ReloadSettings()));
         bar.Controls.Add(HeaderButton("× Kapat", (_, _) => Close()));
         return bar;
     }

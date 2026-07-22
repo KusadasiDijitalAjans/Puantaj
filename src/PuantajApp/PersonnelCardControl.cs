@@ -12,7 +12,7 @@ internal sealed class PersonnelCardControl : UserControl
     private readonly WeeklyPlanningService _planning = new();
     private readonly MonthlySummaryService _summaryService = new();
     private readonly Func<int> _year; private readonly Func<int> _month;
-    private readonly string _hotel; private readonly string _department;
+    private string _hotel; private string _department;
     private readonly TextBox _search = new() { PlaceholderText = "Ara...", Dock = DockStyle.Top, Height = 34 };
     private readonly ListBox _employees = new() { Dock = DockStyle.Fill, BorderStyle = BorderStyle.None, Font = new Font("Segoe UI", 10) };
     private readonly Label _employeeName = Label("Personel seçin", 11, true);
@@ -20,7 +20,9 @@ internal sealed class PersonnelCardControl : UserControl
     private readonly FlowLayoutPanel _weekStates = new() { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false, AutoScroll = true };
     private readonly TabControl _weeks = new() { Dock = DockStyle.Top, Height = 70, Appearance = TabAppearance.FlatButtons, SizeMode = TabSizeMode.Fixed, ItemSize = new Size(155, 54) };
     private readonly ComboBox _defaultShift = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 170 };
-    private readonly DataGridView _matrix = new() { Dock = DockStyle.Fill, AllowUserToAddRows = false, RowHeadersVisible = false, AutoGenerateColumns = false, BackgroundColor = Color.White, BorderStyle = BorderStyle.FixedSingle, AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill, AllowUserToResizeColumns = false };
+    private readonly DataGridView _matrix = new() { Dock = DockStyle.Fill, AllowUserToAddRows = false, RowHeadersVisible = false, AutoGenerateColumns = false, BackgroundColor = Color.White, BorderStyle = BorderStyle.FixedSingle, AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill, AllowUserToResizeColumns = false, ScrollBars = ScrollBars.None };
+    private readonly Panel _matrixHost = new() { Dock = DockStyle.Fill };
+    private readonly LockedGridOverlay _matrixOverlay = new() { Dock = DockStyle.Fill, Visible = false };
     private readonly Button _editButton;
     private readonly Button _clearButton;
     private readonly Button _generateButton;
@@ -48,12 +50,20 @@ internal sealed class PersonnelCardControl : UserControl
         _weeks.SelectedIndexChanged += (_, _) => { _editing = false; RefreshWeek(); };
         _matrix.CurrentCellDirtyStateChanged += (_, _) => { if (_matrix.IsCurrentCellDirty) _matrix.CommitEdit(DataGridViewDataErrorContexts.Commit); };
         _matrix.CellValueChanged += MatrixValueChanged;
+        _matrix.CellPainting += PaintCheckBox;
         ReloadAll();
     }
 
     public void ReloadAll()
     {
         _codes = _database.GetAssignmentCodes(); BuildMatrix(); LoadEmployees(); LoadMonth();
+    }
+
+    public void ReloadSettings()
+    {
+        var settings = _database.GetSettings();
+        _hotel = settings.HotelName; _department = settings.DepartmentName;
+        ReloadAll();
     }
 
     public void SaveCurrentWeek() => GenerateWeek();
@@ -115,7 +125,8 @@ internal sealed class PersonnelCardControl : UserControl
         var actions = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 56, FlowDirection = FlowDirection.RightToLeft, Padding = new Padding(0, 9, 0, 3), WrapContents = false };
         _generateButton.Width = 160; _clearButton.Width = 145; _editButton.Width = 120;
         actions.Controls.Add(_generateButton); actions.Controls.Add(_clearButton); actions.Controls.Add(_editButton);
-        card.Controls.Add(_matrix); card.Controls.Add(actions); card.Controls.Add(shiftBar); card.Controls.Add(hint); card.Controls.Add(leftTitle);
+        _matrixHost.Controls.Clear(); _matrixHost.Controls.Add(_matrix); _matrixHost.Controls.Add(_matrixOverlay);
+        card.Controls.Add(_matrixHost); card.Controls.Add(actions); card.Controls.Add(shiftBar); card.Controls.Add(hint); card.Controls.Add(leftTitle);
         return card;
     }
 
@@ -168,7 +179,7 @@ internal sealed class PersonnelCardControl : UserControl
         _loading = true; _matrix.Columns.Clear();
         _matrix.ColumnHeadersDefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleCenter;
         _matrix.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(249, 250, 252); _matrix.EnableHeadersVisualStyles = false;
-        _matrix.GridColor = Color.FromArgb(224, 228, 234); _matrix.RowTemplate.Height = 29;
+        _matrix.GridColor = Color.FromArgb(224, 228, 234); _matrix.RowTemplate.Height = 32; _matrix.ColumnHeadersHeight = 38;
         _matrix.Columns.Add(new DataGridViewTextBoxColumn { Name = "Definition", HeaderText = "Vardiyalar / Günler", FillWeight = 155, MinimumWidth = 190, ReadOnly = true });
         for (var index = 0; index < 7; index++) _matrix.Columns.Add(new DataGridViewCheckBoxColumn { Name = $"Day{index}", HeaderText = Days[index], FillWeight = 100, MinimumWidth = 68, FlatStyle = FlatStyle.Standard });
         _matrix.Rows.Clear();
@@ -188,7 +199,7 @@ internal sealed class PersonnelCardControl : UserControl
         ClearMatrix();
         if (SelectedEmployee() is not { } employee || SelectedWeek() is not { } week)
         {
-            _editButton.Enabled = false; _copyButton.Enabled = false; _copyMonthButton.Enabled = false; return;
+            _editButton.Enabled = false; _copyButton.Enabled = false; _copyMonthButton.Enabled = false; SetMatrixLocked(false); return;
         }
         for (var offset = 0; offset < 7; offset++)
         {
@@ -203,6 +214,7 @@ internal sealed class PersonnelCardControl : UserControl
         _generateButton.Text = _editing ? "✓  Değişiklikleri Kaydet" : "✓  Haftayı Oluştur";
         if (existing.Count > 0) LoadExistingSelections(existing);
         if (existing.Count > 0 && !_editing) SetActiveMatrixReadOnly(week, true);
+        SetMatrixLocked(existing.Count > 0 && !_editing);
     }
 
     private void RefreshMonthly()
@@ -246,6 +258,7 @@ internal sealed class PersonnelCardControl : UserControl
         var existing = _database.GetAssignments(week.ActiveFrom, week.ActiveTo).Where(item => item.EmployeeId == employee.Id).ToList();
         if (existing.Count == 0) return;
         _editing = true; ClearMatrix(); SetMatrixEnabledDays(week); LoadExistingSelections(existing);
+        SetMatrixLocked(false);
         _clearButton.Enabled = true; _defaultShift.Enabled = true;
         _generateButton.Text = "✓  Değişiklikleri Kaydet";
     }
@@ -329,6 +342,31 @@ internal sealed class PersonnelCardControl : UserControl
         _loading = true; foreach (DataGridViewRow row in _matrix.Rows) if (row.Index != args.RowIndex) row.Cells[args.ColumnIndex].Value = false; _loading = false;
     }
 
+    private void SetMatrixLocked(bool locked)
+    {
+        _matrixOverlay.Visible = locked;
+        if (locked) _matrixOverlay.BringToFront();
+    }
+
+    private void PaintCheckBox(object? sender, DataGridViewCellPaintingEventArgs args)
+    {
+        if (args.RowIndex < 0 || args.ColumnIndex <= 0) return;
+        args.PaintBackground(args.CellBounds, true);
+        const int size = 18;
+        var bounds = new Rectangle(args.CellBounds.X + (args.CellBounds.Width - size) / 2,
+            args.CellBounds.Y + (args.CellBounds.Height - size) / 2, size, size);
+        var selected = Convert.ToBoolean(args.FormattedValue);
+        using var fill = new SolidBrush(selected ? Color.FromArgb(13, 104, 220) : Color.White);
+        using var border = new Pen(selected ? Color.FromArgb(13, 104, 220) : Color.FromArgb(154, 165, 180), 1.5f);
+        args.Graphics.FillRectangle(fill, bounds); args.Graphics.DrawRectangle(border, bounds);
+        if (selected)
+        {
+            using var tick = new Pen(Color.White, 2f) { StartCap = System.Drawing.Drawing2D.LineCap.Round, EndCap = System.Drawing.Drawing2D.LineCap.Round };
+            args.Graphics.DrawLines(tick, [new Point(bounds.Left + 4, bounds.Top + 9), new Point(bounds.Left + 8, bounds.Bottom - 4), new Point(bounds.Right - 3, bounds.Top + 4)]);
+        }
+        args.Handled = true;
+    }
+
     private void SetMatrixEnabledDays(MonthWeek week)
     {
         var weekend = Color.FromArgb(255, 248, 235); var disabledWeekend = Color.FromArgb(246, 236, 218); var disabledWeekday = Color.FromArgb(239, 241, 244);
@@ -360,6 +398,28 @@ internal sealed class PersonnelCardControl : UserControl
     private static Panel Card() => new() { Dock = DockStyle.Fill, BackColor = Color.White, BorderStyle = BorderStyle.FixedSingle };
     private static Label Label(string text, float size, bool bold) => new() { Text = text, AutoSize = false, Font = new Font("Segoe UI", size, bold ? FontStyle.Bold : FontStyle.Regular) };
     private static Button Button(string text, EventHandler handler, Color? back = null, Color? fore = null) { var button = new Button { Text = text, AutoSize = true, Height = 36, FlatStyle = FlatStyle.Flat, BackColor = back ?? Color.White, ForeColor = fore ?? Color.FromArgb(25, 32, 43) }; button.Click += handler; return button; }
+}
+
+internal sealed class LockedGridOverlay : Control
+{
+    public LockedGridOverlay()
+    {
+        SetStyle(ControlStyles.SupportsTransparentBackColor | ControlStyles.OptimizedDoubleBuffer | ControlStyles.UserPaint, true);
+        BackColor = Color.Transparent; Cursor = Cursors.No;
+    }
+
+    protected override void OnPaint(PaintEventArgs args)
+    {
+        using var shade = new SolidBrush(Color.FromArgb(72, 70, 78, 90));
+        args.Graphics.FillRectangle(shade, ClientRectangle);
+        const string message = "✓  Hafta oluşturuldu  •  Değişiklik için Düzenle'yi kullanın";
+        var size = TextRenderer.MeasureText(message, Font);
+        var bounds = new Rectangle((Width - size.Width - 30) / 2, 12, size.Width + 30, 34);
+        using var background = new SolidBrush(Color.FromArgb(235, 31, 41, 55));
+        args.Graphics.FillRectangle(background, bounds);
+        TextRenderer.DrawText(args.Graphics, message, Font, bounds, Color.White,
+            TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine);
+    }
 }
 
 internal sealed class CopyWeekForm : Form
