@@ -1,12 +1,88 @@
 using ClosedXML.Excel;
 using Puantaj.Core.Data;
 using Puantaj.Core.Excel;
+using Puantaj.Core.Planning;
 
 namespace Puantaj.Core.Tests;
 
 public sealed class EmployeeStartDateTests : IDisposable
 {
     private readonly string _directory = Path.Combine(Path.GetTempPath(), $"puantaj-start-date-{Guid.NewGuid():N}");
+    private static readonly IReadOnlyList<AssignmentCodeDefinition> CopyDefinitions =
+    [
+        new("A", "Vardiya A", null, null, true, 1),
+        new("İA", "İşten Ayrıldı", null, null, false, 2)
+    ];
+
+    [Fact]
+    public void FullMonthAndMidMonthEmployeesAreNotCopyMatches()
+    {
+        var source = Employee(1, null);
+        var target = Employee(2, new DateOnly(2026, 7, 8));
+
+        Assert.False(Matches(source, target, new DateOnly(2026, 7, 1), new DateOnly(2026, 7, 31)));
+    }
+
+    [Fact]
+    public void EmployeesWithSameActiveRangeInMonthAreCopyMatches()
+    {
+        var source = Employee(1, new DateOnly(2026, 7, 8));
+        var target = Employee(2, new DateOnly(2026, 7, 8));
+
+        Assert.True(Matches(source, target, new DateOnly(2026, 7, 1), new DateOnly(2026, 7, 31)));
+    }
+
+    [Fact]
+    public void NewEmployeeActiveForWholeSelectedWeekIsCopyMatch()
+    {
+        var source = Employee(1, null);
+        var target = Employee(2, new DateOnly(2026, 7, 1));
+
+        Assert.True(Matches(source, target, new DateOnly(2026, 7, 8), new DateOnly(2026, 7, 14)));
+    }
+
+    [Fact]
+    public void EmployeeStartingMidWeekIsNotCopyMatchForFullWeek()
+    {
+        var source = Employee(1, null);
+        var target = Employee(2, new DateOnly(2026, 7, 10));
+
+        Assert.False(Matches(source, target, new DateOnly(2026, 7, 8), new DateOnly(2026, 7, 14)));
+    }
+
+    [Fact]
+    public void SameActiveDayCountWithDifferentDatesIsNotCopyMatch()
+    {
+        var source = Employee(1, null);
+        var target = Employee(2, new DateOnly(2026, 7, 6));
+        var assignments = new[]
+        {
+            Assignment(1, new DateOnly(2026, 7, 6), "İA"),
+            Assignment(2, new DateOnly(2026, 7, 11), "İA")
+        };
+
+        Assert.False(Matches(source, target, new DateOnly(2026, 7, 1), new DateOnly(2026, 7, 10), assignments));
+    }
+
+    [Fact]
+    public void EmploymentEndDateParticipatesInCopyEligibility()
+    {
+        var source = Employee(1, null);
+        var target = Employee(2, null);
+        var matchingEnds = new[]
+        {
+            Assignment(1, new DateOnly(2026, 7, 20), "İA"),
+            Assignment(2, new DateOnly(2026, 7, 20), "İA")
+        };
+        var differentEnds = new[]
+        {
+            Assignment(1, new DateOnly(2026, 7, 20), "İA"),
+            Assignment(2, new DateOnly(2026, 7, 21), "İA")
+        };
+
+        Assert.True(Matches(source, target, new DateOnly(2026, 7, 1), new DateOnly(2026, 7, 31), matchingEnds));
+        Assert.False(Matches(source, target, new DateOnly(2026, 7, 1), new DateOnly(2026, 7, 31), differentEnds));
+    }
 
     [Theory]
     [InlineData(1, 31)]
@@ -124,6 +200,16 @@ public sealed class EmployeeStartDateTests : IDisposable
         database.Initialize();
         return database;
     }
+
+    private static bool Matches(Employee source, Employee target, DateOnly from, DateOnly to,
+        IReadOnlyList<Assignment>? assignments = null) =>
+        CopyCandidateEligibility.HasMatchingActiveDates(source, target, from, to, assignments ?? [], CopyDefinitions);
+
+    private static Employee Employee(long id, DateOnly? hireDate) =>
+        new(id, $"Personel {id}", true, (int)id, DateTimeOffset.UtcNow, HireDate: hireDate);
+
+    private static Assignment Assignment(long employeeId, DateOnly date, string code) =>
+        new(employeeId, employeeId, date, code, DateTimeOffset.UtcNow);
 
     private static string FindProjectRoot()
     {

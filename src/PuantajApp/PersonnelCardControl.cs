@@ -374,7 +374,7 @@ internal sealed class PersonnelCardControl : UserControl
     private void CopyWeek()
     {
         var sourceEmployee = SelectedEmployee(); var sourceWeek = SelectedWeek(); if (sourceEmployee is null || sourceWeek is null) return;
-        var targets = EligibleCopyTargets(sourceEmployee.Id);
+        var targets = EligibleCopyTargets(sourceEmployee, sourceWeek.ActiveFrom, sourceWeek.ActiveTo);
         if (targets.Count == 0) { MessageBox.Show("Kopyalanabilecek eksik personel bulunmuyor.", "Haftayı Kopyala", MessageBoxButtons.OK, MessageBoxIcon.Information); return; }
         using var dialog = new CopyWeekForm(targets, sourceEmployee, sourceWeek, _year(), MonthName());
         if (dialog.ShowDialog(this) != DialogResult.OK || dialog.TargetEmployee is not { } targetEmployee) return;
@@ -399,7 +399,8 @@ internal sealed class PersonnelCardControl : UserControl
             MessageBox.Show("Kaynak personelin seçili ayda kaydı bulunamadı.", "Ayı Kopyala", MessageBoxButtons.OK, MessageBoxIcon.Information);
             return;
         }
-        var targets = EligibleCopyTargets(sourceEmployee.Id);
+        var monthFrom = new DateOnly(_year(), _month(), 1);
+        var targets = EligibleCopyTargets(sourceEmployee, monthFrom, monthFrom.AddMonths(1).AddDays(-1));
         if (targets.Count == 0) { MessageBox.Show("Kopyalanabilecek eksik personel bulunmuyor.", "Ayı Kopyala", MessageBoxButtons.OK, MessageBoxIcon.Information); return; }
         using var dialog = new CopyMonthForm(targets, sourceEmployee, $"{MonthName()} {_year()}");
         if (dialog.ShowDialog(this) != DialogResult.OK || dialog.TargetEmployee is not { } targetEmployee) return;
@@ -533,6 +534,14 @@ internal sealed class PersonnelCardControl : UserControl
     {
         var completed = _database.EvaluateMonthCompletion(_year(), _month()).CompletedEmployeeIds;
         return _database.GetEmployees().Where(item => item.Id != sourceEmployeeId && !completed.Contains(item.Id))
+            .OrderBy(item => item.FullName, StringComparer.CurrentCultureIgnoreCase).ToList();
+    }
+    private IReadOnlyList<Employee> EligibleCopyTargets(Employee sourceEmployee, DateOnly from, DateOnly to)
+    {
+        var assignments = _database.GetAssignments(from, to);
+        var completed = _database.EvaluateMonthCompletion(_year(), _month()).CompletedEmployeeIds;
+        return _database.GetEmployees().Where(item => item.Id != sourceEmployee.Id && !completed.Contains(item.Id)
+                && CopyCandidateEligibility.HasMatchingActiveDates(sourceEmployee, item, from, to, assignments, _codes))
             .OrderBy(item => item.FullName, StringComparer.CurrentCultureIgnoreCase).ToList();
     }
     private Employee? SelectedEmployee() => _employees.SelectedItem as Employee;
