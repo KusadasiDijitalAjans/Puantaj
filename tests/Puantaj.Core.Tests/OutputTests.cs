@@ -223,7 +223,7 @@ public sealed class OutputTests
                 for (var day = 1; day <= 31; day++)
                 {
                     var cell = sheet.Cell(7, 4 + day);
-                    if (endDay is not null && day >= endDay)
+                    if (endDay is not null && day > endDay)
                     {
                         Assert.True(cell.IsEmpty());
                         Assert.Equal(System.Drawing.Color.Black.ToArgb(), cell.Style.Fill.BackgroundColor.Color.ToArgb());
