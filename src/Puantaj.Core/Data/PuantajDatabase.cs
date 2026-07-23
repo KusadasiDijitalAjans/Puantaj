@@ -123,7 +123,7 @@ public sealed class PuantajDatabase
                    e.Position, e.WorkPattern, e.HireDate
             FROM Employees e
             LEFT JOIN Assignments a ON a.EmployeeId=e.Id AND a.WorkDate >= $from AND a.WorkDate <= $to
-            WHERE e.IsActive=1 OR a.Id IS NOT NULL
+            WHERE (e.IsActive=1 AND (e.HireDate IS NULL OR e.HireDate <= $to)) OR a.Id IS NOT NULL
             ORDER BY e.DisplayOrder, e.FullName;
             """;
         command.Parameters.AddWithValue("$from", FormatDate(from)); command.Parameters.AddWithValue("$to", FormatDate(to));
@@ -250,8 +250,12 @@ public sealed class PuantajDatabase
         using var connection = Open();
         using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT Id, EmployeeId, WorkDate, Code, UpdatedAt FROM Assignments
-            WHERE WorkDate >= $from AND WorkDate <= $to ORDER BY EmployeeId, WorkDate;
+            SELECT a.Id, a.EmployeeId, a.WorkDate, a.Code, a.UpdatedAt
+            FROM Assignments a
+            INNER JOIN Employees e ON e.Id=a.EmployeeId
+            WHERE a.WorkDate >= $from AND a.WorkDate <= $to
+              AND (e.HireDate IS NULL OR a.WorkDate >= e.HireDate)
+            ORDER BY a.EmployeeId, a.WorkDate;
             """;
         command.Parameters.AddWithValue("$from", FormatDate(from));
         command.Parameters.AddWithValue("$to", FormatDate(to));
@@ -283,6 +287,9 @@ public sealed class PuantajDatabase
             EnsureMonthUnlocked(month.Year, month.Month);
         using var connection = Open();
         using var transaction = connection.BeginTransaction();
+        var hireDate = GetHireDate(connection, transaction, employeeId);
+        if (assignments.Keys.Any(date => hireDate is { } hire && date < hire))
+            throw new InvalidOperationException("İşe giriş tarihinden önce puantaj atanamaz.");
         if (previousEmploymentEnd is not null)
         {
             var monthEnd = new DateOnly(previousEmploymentEnd.Value.Year, previousEmploymentEnd.Value.Month,
@@ -360,15 +367,18 @@ public sealed class PuantajDatabase
         var to = from.AddMonths(1).AddDays(-1);
         using var connection = Open();
         using var transaction = connection.BeginTransaction();
+        var targetHireDate = GetHireDate(connection, transaction, targetEmployeeId);
         Execute(connection, "DELETE FROM Assignments WHERE EmployeeId=$employee AND WorkDate >= $from AND WorkDate <= $to;",
             transaction, ("$employee", targetEmployeeId), ("$from", FormatDate(from)), ("$to", FormatDate(to)));
         Execute(connection, """
             INSERT INTO Assignments (EmployeeId, WorkDate, Code, UpdatedAt)
             SELECT $target, WorkDate, Code, $updated
             FROM Assignments
-            WHERE EmployeeId=$source AND WorkDate >= $from AND WorkDate <= $to;
+            WHERE EmployeeId=$source AND WorkDate >= $from AND WorkDate <= $to
+              AND ($hire IS NULL OR WorkDate >= $hire);
             """, transaction, ("$target", targetEmployeeId), ("$updated", DateTimeOffset.UtcNow.ToString("O")),
-            ("$source", sourceEmployeeId), ("$from", FormatDate(from)), ("$to", FormatDate(to)));
+            ("$source", sourceEmployeeId), ("$from", FormatDate(from)), ("$to", FormatDate(to)),
+            ("$hire", targetHireDate is null ? null : FormatDate(targetHireDate.Value)));
         transaction.Commit();
     }
 
@@ -378,6 +388,7 @@ public sealed class PuantajDatabase
         if (to < from) throw new ArgumentOutOfRangeException(nameof(to));
         foreach (var value in DatesByMonth(from, to)) EnsureMonthUnlocked(value.Year, value.Month);
         using var connection = Open(); using var transaction = connection.BeginTransaction();
+        var targetHireDate = GetHireDate(connection, transaction, targetEmployeeId);
         foreach (var (id, role) in new[] { (sourceEmployeeId, "Kaynak"), (targetEmployeeId, "Hedef") })
         {
             using var employee = connection.CreateCommand(); employee.Transaction = transaction;
@@ -399,9 +410,11 @@ public sealed class PuantajDatabase
         Execute(connection, """
             INSERT INTO Assignments (EmployeeId,WorkDate,Code,UpdatedAt)
             SELECT $target,WorkDate,Code,$updated FROM Assignments
-            WHERE EmployeeId=$source AND WorkDate >= $from AND WorkDate <= $to;
+            WHERE EmployeeId=$source AND WorkDate >= $from AND WorkDate <= $to
+              AND ($hire IS NULL OR WorkDate >= $hire);
             """, transaction, ("$target", targetEmployeeId), ("$source", sourceEmployeeId),
-            ("$from", FormatDate(from)), ("$to", FormatDate(to)), ("$updated", DateTimeOffset.UtcNow.ToString("O")));
+            ("$from", FormatDate(from)), ("$to", FormatDate(to)), ("$updated", DateTimeOffset.UtcNow.ToString("O")),
+            ("$hire", targetHireDate is null ? null : FormatDate(targetHireDate.Value)));
         transaction.Commit();
     }
 
@@ -419,6 +432,7 @@ public sealed class PuantajDatabase
         ValidateMonth(year, month); EnsureMonthUnlocked(year, month);
         var monthFrom = new DateOnly(year, month, 1); var monthTo = monthFrom.AddMonths(1).AddDays(-1);
         using var connection = Open(); using var transaction = connection.BeginTransaction();
+        var hireDate = GetHireDate(connection, transaction, employeeId);
         var pattern = new Dictionary<DayOfWeek, string>();
         using (var command = connection.CreateCommand())
         {
@@ -443,6 +457,7 @@ public sealed class PuantajDatabase
             ("$employee", employeeId), ("$from", FormatDate(monthFrom)), ("$to", FormatDate(monthTo)));
         for (var date = monthFrom; date <= monthTo; date = date.AddDays(1))
         {
+            if (hireDate is { } hire && date < hire) continue;
             var code = pattern.GetValueOrDefault(date.DayOfWeek, fallback!);
             Execute(connection, "INSERT INTO Assignments (EmployeeId,WorkDate,Code,UpdatedAt) VALUES ($employee,$date,$code,$updated);", transaction,
                 ("$employee", employeeId), ("$date", FormatDate(date)), ("$code", code), ("$updated", DateTimeOffset.UtcNow.ToString("O")));
@@ -475,8 +490,11 @@ public sealed class PuantajDatabase
         }
         foreach (var employeeId in ids)
         {
+            var hireDate = GetHireDate(connection, transaction, employeeId);
             foreach (var date in workDates)
             {
+                if (hireDate is { } hire && date < hire)
+                    throw new InvalidOperationException("İşe giriş tarihinden önce puantaj atanamaz.");
                 Execute(connection, """
                     INSERT INTO Assignments (EmployeeId, WorkDate, Code, UpdatedAt)
                     VALUES ($employeeId, $date, $code, $updated)
@@ -683,6 +701,17 @@ public sealed class PuantajDatabase
     private static void ValidateMonth(int year, int month)
     {
         if (year is < 2000 or > 9999 || month is < 1 or > 12) throw new ArgumentOutOfRangeException(nameof(month));
+    }
+
+    private static DateOnly? GetHireDate(SqliteConnection connection, SqliteTransaction transaction, long employeeId)
+    {
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = "SELECT HireDate FROM Employees WHERE Id=$id;";
+        command.Parameters.AddWithValue("$id", employeeId);
+        var value = command.ExecuteScalar();
+        if (value is null) throw new InvalidOperationException("Personel bulunamadı.");
+        return value is DBNull ? null : DateOnly.ParseExact((string)value, "yyyy-MM-dd", CultureInfo.InvariantCulture);
     }
 
     private SqliteConnection Open()

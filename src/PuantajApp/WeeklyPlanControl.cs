@@ -76,8 +76,15 @@ internal sealed class WeeklyPlanControl : UserControl
                 values[1] = employee.Id;
                 values[2] = employee.FullName;
                 for (var index = 0; index < 7; index++)
-                    values[index + 3] = assignments.TryGetValue((employee.Id, week[index]), out var assignment) ? assignment.Code : null;
-                _grid.Rows.Add(values);
+                    values[index + 3] = employee.IsEmployedOn(week[index]) && assignments.TryGetValue((employee.Id, week[index]), out var assignment) ? assignment.Code : null;
+                var rowIndex = _grid.Rows.Add(values);
+                for (var index = 0; index < 7; index++)
+                    if (!employee.IsEmployedOn(week[index]))
+                    {
+                        var cell = _grid.Rows[rowIndex].Cells[index + 3];
+                        cell.ReadOnly = true;
+                        cell.Style.BackColor = Color.LightPink;
+                    }
             }
         }
         finally { _loading = false; }

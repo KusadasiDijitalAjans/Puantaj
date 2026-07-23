@@ -98,6 +98,12 @@ public sealed class MonthlyExcelExporter
             sheet.Cell(row, 3).Value = employee.FullName;
             sheet.Cell(row, 4).Value = employee.Position;
             WriteEmployeeFormulas(sheet, row);
+            if (employee.HireDate is { } hireDate)
+                for (var day = 1; day <= days; day++)
+                {
+                    if (new DateOnly(year, month, day) >= hireDate) break;
+                    BeforeHire(sheet.Cell(row, FirstDayColumn + day - 1));
+                }
         }
 
         var allDefinitions = definitions ?? LegacyDefinitions();
@@ -109,6 +115,7 @@ public sealed class MonthlyExcelExporter
         {
             if (assignment.WorkDate.Year != year || assignment.WorkDate.Month != month ||
                 !employeeRows.TryGetValue(assignment.EmployeeId, out var row)) continue;
+            if (!employees.First(item => item.Id == assignment.EmployeeId).IsEmployedOn(assignment.WorkDate)) continue;
             if (ended.TryGetValue(assignment.EmployeeId, out var endDate) && assignment.WorkDate >= endDate) continue;
             var cell = sheet.Cell(row, FirstDayColumn + assignment.WorkDate.Day - 1);
             var definition = resolver.Resolve(assignment.Code); var value = mapper.Map(assignment.Code); cell.Value = value;
@@ -149,6 +156,15 @@ public sealed class MonthlyExcelExporter
         cell.Style.Fill.BackgroundColor = XLColor.Black;
         cell.Style.Fill.PatternColor = XLColor.Black;
         cell.Style.Font.FontColor = XLColor.White;
+    }
+
+    private static void BeforeHire(IXLCell cell)
+    {
+        cell.Clear(XLClearOptions.Contents);
+        cell.Style.Fill.PatternType = XLFillPatternValues.Solid;
+        cell.Style.Fill.BackgroundColor = XLColor.LightPink;
+        cell.Style.Fill.PatternColor = XLColor.LightPink;
+        cell.Style.Font.FontColor = XLColor.Black;
     }
 
     private static IReadOnlyList<AssignmentCodeDefinition> LegacyDefinitions() => AttendanceCodes.All
