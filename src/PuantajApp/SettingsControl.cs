@@ -35,8 +35,15 @@ internal sealed class SettingsControl : UserControl
         var save = new Button { Text = "Ayarları Kaydet", AutoSize = true }; save.Click += (_, _) => Save();
         var backup = new Button { Text = "Yedek Al", AutoSize = true }; backup.Click += (_, _) => Backup();
         var restore = new Button { Text = "Geri Yükle", AutoSize = true }; restore.Click += (_, _) => Restore();
+        var reset = new Button
+        {
+            Text = "Veritabanını Sıfırla", AutoSize = true, BackColor = Color.Firebrick,
+            ForeColor = Color.White, FlatStyle = FlatStyle.Flat
+        };
+        reset.FlatAppearance.BorderColor = Color.DarkRed;
+        reset.Click += (_, _) => ResetDatabase();
         var actions = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 55, Padding = new Padding(18, 8, 0, 0) };
-        actions.Controls.AddRange([save, backup, restore]);
+        actions.Controls.AddRange([save, backup, restore, reset]);
         var scroll = new Panel { Dock = DockStyle.Fill, AutoScroll = true }; scroll.Controls.Add(table);
         Controls.Add(scroll); Controls.Add(actions);
         LoadSettings();
@@ -94,6 +101,42 @@ internal sealed class SettingsControl : UserControl
         catch (Exception exception) { ShowError(exception, "Yedek geri yüklenemedi"); }
     }
 
+    private void ResetDatabase()
+    {
+        const string title = "Veritabanını Sıfırla";
+        const string warning = "Tüm personel, puantaj, vardiya ve kayıtlar kalıcı olarak silinecektir.\n" +
+                               "Bu işlem geri alınamaz.\n" +
+                               "Devam etmek istediğinize emin misiniz?";
+        if (MessageBox.Show(warning, title, MessageBoxButtons.YesNo, MessageBoxIcon.Warning,
+                MessageBoxDefaultButton.Button2) != DialogResult.Yes)
+            return;
+
+        var hotelName = _database.GetSettings().HotelName;
+        using var confirmation = new DatabaseResetConfirmationDialog();
+        if (confirmation.ShowDialog(this) != DialogResult.OK)
+            return;
+
+        if (!string.Equals(confirmation.EnteredHotelName, hotelName, StringComparison.Ordinal))
+        {
+            MessageBox.Show("Girilen otel adı eşleşmiyor. Veritabanı sıfırlanmadı.", title,
+                MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
+        try
+        {
+            _database.ResetOperationalData();
+            MessageBox.Show("Veritabanı başarıyla sıfırlandı.", title,
+                MessageBoxButtons.OK, MessageBoxIcon.Information);
+            FindForm()?.Close();
+        }
+        catch
+        {
+            MessageBox.Show("Veritabanı sıfırlanamadı. Hiçbir veri silinmedi.", title,
+                MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
     private Control LogoActions()
     {
         var panel = new FlowLayoutPanel { AutoSize = true };
@@ -115,4 +158,44 @@ internal sealed class SettingsControl : UserControl
     private static void AddControl(TableLayoutPanel table, string label, Control control, Control? extra = null) { var row = table.RowCount++; table.Controls.Add(new Label { Text = label, AutoSize = true, Margin = new Padding(0, 7, 0, 0) }, 0, row); table.Controls.Add(control, 1, row); if (extra is not null) table.Controls.Add(extra, 2, row); }
     private string Get(string key) => _texts[key].Text.Trim(); private void Set(string key, string value) => _texts[key].Text = value;
     private static void ShowError(Exception exception, string title) => MessageBox.Show(exception.Message, title, MessageBoxButtons.OK, MessageBoxIcon.Error);
+}
+
+internal sealed class DatabaseResetConfirmationDialog : Form
+{
+    private readonly TextBox _hotelName = new() { Dock = DockStyle.Top };
+
+    public string EnteredHotelName => _hotelName.Text;
+
+    public DatabaseResetConfirmationDialog()
+    {
+        Text = "Veritabanını Sıfırla";
+        StartPosition = FormStartPosition.CenterParent;
+        FormBorderStyle = FormBorderStyle.FixedDialog;
+        MinimizeBox = false;
+        MaximizeBox = false;
+        ShowInTaskbar = false;
+        ClientSize = new Size(500, 145);
+
+        var explanation = new Label
+        {
+            Text = "Devam etmek için Ayarlar bölümünde kayıtlı olan otel adını birebir yazın.",
+            Dock = DockStyle.Top, Height = 48, TextAlign = ContentAlignment.MiddleLeft
+        };
+        var confirm = new Button { Text = "Onayla", DialogResult = DialogResult.OK, AutoSize = true };
+        var cancel = new Button { Text = "İptal", DialogResult = DialogResult.Cancel, AutoSize = true };
+        var buttons = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Bottom, Height = 45, FlowDirection = FlowDirection.RightToLeft,
+            Padding = new Padding(0, 8, 8, 0)
+        };
+        buttons.Controls.Add(cancel);
+        buttons.Controls.Add(confirm);
+        var content = new Panel { Dock = DockStyle.Fill, Padding = new Padding(14, 8, 14, 8) };
+        content.Controls.Add(_hotelName);
+        content.Controls.Add(explanation);
+        Controls.Add(content);
+        Controls.Add(buttons);
+        AcceptButton = confirm;
+        CancelButton = cancel;
+    }
 }

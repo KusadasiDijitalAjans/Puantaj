@@ -552,6 +552,24 @@ public sealed class PuantajDatabase
             ("$center", settings.CenterHorizontally ? 1 : 0));
     }
 
+    public void ResetOperationalData()
+    {
+        using var connection = Open();
+        using var transaction = connection.BeginTransaction();
+        try
+        {
+            Execute(connection, "DELETE FROM Assignments;", transaction);
+            Execute(connection, "DELETE FROM LockedMonths;", transaction);
+            Execute(connection, "DELETE FROM Employees;", transaction);
+            transaction.Commit();
+        }
+        catch
+        {
+            transaction.Rollback();
+            throw;
+        }
+    }
+
     public void LockMonth(int year, int month)
     {
         ValidateMonth(year, month);
