@@ -238,7 +238,7 @@ internal sealed class PersonnelCardControl : UserControl
             var date = week.Monday.AddDays(offset);
             _matrix.Columns[offset + 1].HeaderText = $"{Days[offset]} {date:dd}";
         }
-        SetMatrixEnabledDays(week);
+        SetMatrixEnabledDays(week, employee);
         var existing = _database.GetAssignments(week.ActiveFrom, week.ActiveTo).Where(item => item.EmployeeId == employee.Id).ToList();
         ApplyPlanningUiState(existing.Count > 0, _database.IsMonthLocked(_year(), _month()));
         _generateButton.Text = _editing ? "✓  Değişiklikleri Kaydet" : "✓  Haftayı Oluştur";
@@ -272,15 +272,16 @@ internal sealed class PersonnelCardControl : UserControl
         if (employee is null) { _monthlySummary.SetSummary(new MonthlySummary([], 0, 0, 0)); return; }
         var days = DateTime.DaysInMonth(_year(), _month()); _monthly.Columns.Add("Person", "Personel"); _monthly.Columns[0].Width = 145;
         for (var day = 1; day <= days; day++) { var date = new DateOnly(_year(), _month(), day); _monthly.Columns.Add($"D{day}", $"{day}\n{Days[((int)date.DayOfWeek + 6) % 7]}"); _monthly.Columns[^1].Width = 43; }
-        var assignments = MonthAssignments(employee.Id); var map = assignments.ToDictionary(item => item.WorkDate, item => item.Code); var values = new object?[days + 1]; values[0] = employee.FullName;
+        var assignments = MonthAssignments(employee.Id).Where(item => employee.IsEmployedOn(item.WorkDate)).ToList();
+        var map = assignments.ToDictionary(item => item.WorkDate, item => item.Code); var values = new object?[days + 1]; values[0] = employee.FullName;
         var resolver = new AssignmentCodeResolver(_codes); var ended = false;
         for (var day = 1; day <= days; day++)
         {
             var date = new DateOnly(_year(), _month(), day); if (map.TryGetValue(date, out var code) && resolver.Resolve(code).IsEmploymentEnded) ended = true;
-            values[day] = ended ? "" : map.GetValueOrDefault(date);
+            values[day] = ended || !employee.IsEmployedOn(date) ? "" : map.GetValueOrDefault(date);
         }
         var rowIndex = _monthly.Rows.Add(values); ended = false;
-        for (var day = 1; day <= days; day++) { var date = new DateOnly(_year(), _month(), day); if (map.TryGetValue(date, out var code) && resolver.Resolve(code).IsEmploymentEnded) ended = true; _monthly.Rows[rowIndex].Cells[day].Style.BackColor = ended ? Color.Black : code is null ? Color.White : CodeColor(resolver.Resolve(code)); }
+        for (var day = 1; day <= days; day++) { var date = new DateOnly(_year(), _month(), day); if (map.TryGetValue(date, out var code) && resolver.Resolve(code).IsEmploymentEnded) ended = true; _monthly.Rows[rowIndex].Cells[day].Style.BackColor = ended ? Color.Black : !employee.IsEmployedOn(date) ? Color.LightPink : code is null ? Color.White : CodeColor(resolver.Resolve(code)); }
         _monthlySummary.SetSummary(_summaryService.Calculate(assignments, _codes));
     }
 
@@ -296,7 +297,8 @@ internal sealed class PersonnelCardControl : UserControl
             for (var day = 0; day < 7; day++) foreach (DataGridViewRow row in _matrix.Rows)
                 if (Convert.ToBoolean(row.Cells[day + 1].Value) && row.Tag is AssignmentCodeDefinition definition) exceptions[week.Monday.AddDays(day)] = definition.Code;
             var built = _planning.BuildWeek(week, _defaultShift.SelectedValue?.ToString(), exceptions);
-            var expanded = _planning.ExpandEmploymentEndedToMonthEnd(built, _codes);
+            var expanded = _planning.ExpandEmploymentEndedToMonthEnd(built, _codes)
+                .Where(item => employee.IsEmployedOn(item.Key)).ToDictionary();
             _database.SaveWeekAssignments(employee.Id, week.ActiveFrom, week.ActiveTo, expanded, _editing);
             _editing = false; _dirty = false; ClearMatrix(); RefreshPerson();
         }
@@ -308,7 +310,7 @@ internal sealed class PersonnelCardControl : UserControl
         if (SelectedEmployee() is not { } employee || SelectedWeek() is not { } week) return;
         var existing = _database.GetAssignments(week.ActiveFrom, week.ActiveTo).Where(item => item.EmployeeId == employee.Id).ToList();
         if (existing.Count == 0) return;
-        _editing = true; _dirty = false; ClearMatrix(); SetMatrixEnabledDays(week); LoadExistingSelections(existing);
+        _editing = true; _dirty = false; ClearMatrix(); SetMatrixEnabledDays(week, employee); LoadExistingSelections(existing);
         SetMatrixLocked(false);
         ApplyPlanningUiState(hasSavedWeek: true, monthLocked: false);
         _generateButton.Text = "✓  Değişiklikleri Kaydet";
@@ -501,16 +503,18 @@ internal sealed class PersonnelCardControl : UserControl
         RefreshPerson();
     }
 
-    private void SetMatrixEnabledDays(MonthWeek week)
+    private void SetMatrixEnabledDays(MonthWeek week, Employee employee)
     {
         var weekend = Color.FromArgb(255, 248, 235); var disabledWeekend = Color.FromArgb(246, 236, 218); var disabledWeekday = Color.FromArgb(239, 241, 244);
         for (var day = 0; day < 7; day++)
         {
-            var date = week.Monday.AddDays(day); var enabled = date >= week.ActiveFrom && date <= week.ActiveTo; var isWeekend = date.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday;
+            var date = week.Monday.AddDays(day); var inMonth = date >= week.ActiveFrom && date <= week.ActiveTo;
+            var enabled = inMonth && employee.IsEmployedOn(date); var beforeHire = inMonth && !employee.IsEmployedOn(date);
+            var isWeekend = date.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday;
             _matrix.Columns[day + 1].HeaderCell.Style.BackColor = isWeekend ? weekend : Color.FromArgb(249, 250, 252);
             foreach (DataGridViewRow row in _matrix.Rows)
             {
-                var cell = row.Cells[day + 1]; cell.ReadOnly = !enabled; cell.Style.BackColor = enabled ? isWeekend ? weekend : Color.White : isWeekend ? disabledWeekend : disabledWeekday;
+                var cell = row.Cells[day + 1]; cell.ReadOnly = !enabled; cell.Style.BackColor = beforeHire ? Color.LightPink : enabled ? isWeekend ? weekend : Color.White : isWeekend ? disabledWeekend : disabledWeekday;
                 if (!enabled) cell.Value = false;
             }
         }

@@ -270,13 +270,14 @@ public sealed class WeeklyWorkflowV101Tests : IDisposable
     }
 
     [Fact]
-    public void EmployeeEditorOnlyRequestsNameAndPosition()
+    public void EmployeeEditorRequestsNamePositionAndOptionalHireDate()
     {
         var root = FindProjectRoot(); var source = File.ReadAllText(Path.Combine(root, "src", "PuantajApp", "EmployeesControl.cs"));
         Assert.Contains("Ad Soyad:", source, StringComparison.Ordinal);
         Assert.Contains("Görevi:", source, StringComparison.Ordinal);
+        Assert.Contains("İşe Giriş:", source, StringComparison.Ordinal);
+        Assert.Contains("ShowCheckBox = true", source, StringComparison.Ordinal);
         Assert.DoesNotContain("Çalışma Şekli", source, StringComparison.Ordinal);
-        Assert.DoesNotContain("İşe giriş tarihi:", source, StringComparison.Ordinal);
     }
 
     private PuantajDatabase CreateDatabase()

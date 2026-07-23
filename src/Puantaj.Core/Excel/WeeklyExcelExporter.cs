@@ -54,6 +54,15 @@ public sealed class WeeklyExcelExporter
             employeeRows[employees[index].Id] = row;
             sheet.Cell(row, 1).Value = index + 1;
             sheet.Cell(row, 2).Value = employees[index].FullName;
+            for (var day = 0; day < 7; day++)
+                if (!employees[index].IsEmployedOn(week[day]))
+                {
+                    var cell = sheet.Cell(row, DayColumns[day]);
+                    cell.Clear(XLClearOptions.Contents);
+                    cell.Style.Fill.PatternType = XLFillPatternValues.Solid;
+                    cell.Style.Fill.BackgroundColor = XLColor.LightPink;
+                    cell.Style.Fill.PatternColor = XLColor.LightPink;
+                }
         }
 
         var resolver = new AssignmentCodeResolver(definitions ?? LegacyDefinitions());
@@ -63,6 +72,7 @@ public sealed class WeeklyExcelExporter
         {
             var dayIndex = assignment.WorkDate.DayNumber - monday.DayNumber;
             if (dayIndex is < 0 or > 6 || !employeeRows.TryGetValue(assignment.EmployeeId, out var row)) continue;
+            if (!employees.First(item => item.Id == assignment.EmployeeId).IsEmployedOn(assignment.WorkDate)) continue;
             if (ended.TryGetValue(assignment.EmployeeId, out var endDate) && assignment.WorkDate >= endDate) continue;
             sheet.Cell(row, DayColumns[dayIndex]).Value = resolver.Resolve(assignment.Code).Code;
         }
