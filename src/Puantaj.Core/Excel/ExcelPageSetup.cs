@@ -10,7 +10,7 @@ internal static class ExcelPageSetup
     {
         sheet.PageSetup.PaperSize = XLPaperSize.A4Paper;
         sheet.PageSetup.PageOrientation = orientation;
-        sheet.PageSetup.FitToPages(1, 0);
+        sheet.PageSetup.FitToPages(1, 1);
         sheet.PageSetup.CenterHorizontally = true;
         sheet.PageSetup.Margins.Left = 0.25;
         sheet.PageSetup.Margins.Right = 0.25;
@@ -34,7 +34,7 @@ internal static class ExcelPageSetup
         pageSetup.PaperSize = 9U; // A4
         pageSetup.Orientation = OrientationValues.Landscape;
         pageSetup.FitToWidth = 1U;
-        pageSetup.FitToHeight = 0U;
+        pageSetup.FitToHeight = 1U;
         pageSetup.Scale = null;
         var properties = worksheet.GetFirstChild<SheetProperties>() ?? worksheet.PrependChild(new SheetProperties());
         properties.PageSetupProperties ??= new PageSetupProperties();
