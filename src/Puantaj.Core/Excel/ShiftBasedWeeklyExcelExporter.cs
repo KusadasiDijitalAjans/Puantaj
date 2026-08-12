@@ -123,7 +123,7 @@ public sealed class ShiftBasedWeeklyExcelExporter
                     for (var day = Math.Max(0, endDate.DayNumber - monday.DayNumber); day < 7; day++) AttendanceExcelStyle.Blackout(sheet.Cell(row, WorkColumns[day]));
             }
         }
-        ExcelBranding.ApplyWeekly(sheet, settings); ExcelPageSetup.ApplyA4(sheet, "A1:S36", XLPageOrientation.Landscape);
+        ExcelPageSetup.ApplyA4(sheet, "A1:S36", XLPageOrientation.Landscape);
     }
 
     private static void WriteGroupHeader(IXLWorksheet sheet, int row, string title)

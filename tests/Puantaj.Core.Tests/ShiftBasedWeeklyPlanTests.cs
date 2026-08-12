@@ -88,7 +88,7 @@ public sealed class ShiftBasedWeeklyPlanTests
     }
 
     [Fact]
-    public void EndedAndFutureEmployeesAreHandledAndSettingsSignaturesRepeat()
+    public void EndedAndFutureEmployeesAreHandledWithoutSettingsBranding()
     {
         var future = Employee(1, "Housman") with { HireDate = Monday.AddDays(7) };
         var ended = Employee(2, "Laundry") with { IsActive = false };
@@ -99,7 +99,14 @@ public sealed class ShiftBasedWeeklyPlanTests
         Assert.DoesNotContain("Personel 1", sheet.Column(2).CellsUsed().Select(cell => cell.GetString()));
         var endedRow = FindEmployeeRow(sheet, 2); Assert.Equal(System.Drawing.Color.Black.ToArgb(), sheet.Cell(endedRow, 6).Style.Fill.BackgroundColor.Color.ToArgb());
         Assert.DoesNotContain("İA", sheet.CellsUsed().Select(cell => cell.GetString()));
-        Assert.Equal("Müdür", sheet.Cell("K31").GetString()); Assert.Equal("İK", sheet.Cell("Q31").GetString()); Assert.Equal("GM", sheet.Cell("Q33").GetString());
+        Assert.Empty(sheet.Pictures);
+        Assert.DoesNotContain("Müdür", sheet.CellsUsed().Select(cell => cell.GetString()));
+        Assert.DoesNotContain("İK", sheet.CellsUsed().Select(cell => cell.GetString()));
+        Assert.DoesNotContain("GM", sheet.CellsUsed().Select(cell => cell.GetString()));
+        using var template = new XLWorkbook(ShiftBasedWeeklyExcelExporter.FindTemplate(Path.Combine(Root(), "templates")));
+        for (var footerRow = 28; footerRow <= 36; footerRow++)
+            for (var column = 1; column <= 19; column++)
+                Assert.Equal(template.Worksheet(1).Cell(footerRow, column).GetString(), sheet.Cell(footerRow, column).GetString());
     }
 
     [Fact]

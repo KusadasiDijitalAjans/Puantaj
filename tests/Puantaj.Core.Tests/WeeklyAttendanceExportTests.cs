@@ -78,7 +78,7 @@ public sealed class WeeklyAttendanceExportTests
     }
 
     [Fact]
-    public void SettingsPopulateHotelDepartmentAndAllApprovalSignatures()
+    public void SettingsDoNotInjectLogoOrApprovalDataAndTemplateFooterStaysUnchanged()
     {
         var settings = AppSettings.CreateDefault("Otel", "Departman") with
         {
@@ -89,8 +89,11 @@ public sealed class WeeklyAttendanceExportTests
         using var result = Export(new DateOnly(2026, 8, 10), [Employee(1)], [], settings);
         var sheet = result.Workbook.Worksheet(1);
         Assert.Equal("Otel", sheet.Cell("C3").GetString()); Assert.Equal("Departman", sheet.Cell("C4").GetString());
-        Assert.Equal("Departman Müdürü", sheet.Cell("K31").GetString()); Assert.Equal("İK Müdürü", sheet.Cell("Q31").GetString());
-        Assert.Equal("Genel Müdür", sheet.Cell("Q33").GetString());
+        Assert.Empty(sheet.Pictures);
+        Assert.DoesNotContain("Departman Müdürü", sheet.CellsUsed().Select(cell => cell.GetString()));
+        Assert.DoesNotContain("İK Müdürü", sheet.CellsUsed().Select(cell => cell.GetString()));
+        Assert.DoesNotContain("Genel Müdür", sheet.CellsUsed().Select(cell => cell.GetString()));
+        AssertFooterMatchesTemplate(result.Workbook, WeeklyExcelExporter.FindWeeklyTemplate(Path.Combine(FindProjectRoot(), "templates")));
     }
 
     [Fact]
@@ -135,6 +138,17 @@ public sealed class WeeklyAttendanceExportTests
         var current = new DirectoryInfo(AppContext.BaseDirectory);
         while (current is not null) { if (File.Exists(Path.Combine(current.FullName, "Puantaj.sln"))) return current.FullName; current = current.Parent; }
         throw new DirectoryNotFoundException();
+    }
+
+    private static void AssertFooterMatchesTemplate(XLWorkbook output, string templatePath)
+    {
+        using var template = new XLWorkbook(templatePath);
+        var expected = template.Worksheet(1); var actual = output.Worksheet(1);
+        for (var row = 28; row <= 36; row++)
+            for (var column = 1; column <= 19; column++)
+                Assert.Equal(expected.Cell(row, column).GetString(), actual.Cell(row, column).GetString());
+        Assert.Contains(actual.CellsUsed(), cell => cell.GetString() == "Department Head");
+        Assert.Contains(actual.CellsUsed(), cell => cell.GetString().Contains("Signature", StringComparison.Ordinal));
     }
 
     private sealed record ExportResult(string Path, XLWorkbook Workbook) : IDisposable

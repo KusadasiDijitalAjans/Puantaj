@@ -5,18 +5,6 @@ namespace Puantaj.Core.Excel;
 
 internal static class ExcelBranding
 {
-    public static void ApplyWeekly(IXLWorksheet sheet, AppSettings? settings)
-    {
-        if (settings is null) return;
-        AddLogo(sheet, settings, "A1");
-        sheet.Cell("K31").Value = settings.DepartmentManager;
-        sheet.Cell("K32").Value = settings.DepartmentManagerTitle;
-        sheet.Cell("Q31").Value = settings.HumanResourcesManager;
-        sheet.Cell("Q32").Value = settings.HumanResourcesTitle;
-        sheet.Cell("Q33").Value = settings.GeneralManager;
-        sheet.Cell("Q34").Value = settings.GeneralManagerTitle;
-    }
-
     public static void ApplyMonthly(IXLWorksheet sheet, AppSettings? settings)
     {
         if (settings is null) return;
@@ -24,22 +12,6 @@ internal static class ExcelBranding
         WriteSignature(sheet, "E52", "E53", settings.HumanResourcesManager, settings.HumanResourcesTitle);
         WriteSignature(sheet, "AC52", "AC53", settings.DepartmentManager, settings.DepartmentManagerTitle);
         WriteSignature(sheet, "AS52", "AS53", settings.GeneralManager, settings.GeneralManagerTitle);
-    }
-
-    private static void AddLogo(IXLWorksheet sheet, AppSettings settings, string cell)
-    {
-        if (!settings.PrintLogo || string.IsNullOrWhiteSpace(settings.LogoPath) || !File.Exists(settings.LogoPath)) return;
-        try
-        {
-            var picture = sheet.AddPicture(settings.LogoPath).MoveTo(sheet.Cell(cell));
-            var width = Math.Max(30, (int)(settings.LogoSizeCm * 38));
-            var ratio = picture.OriginalWidth == 0 ? 1d : (double)picture.OriginalHeight / picture.OriginalWidth;
-            picture.WithSize(width, Math.Max(20, (int)(width * ratio)));
-        }
-        catch (Exception)
-        {
-            // Bozuk/desteklenmeyen bir logo dosyası tüm dışa aktarımı durdurmamalı; logo atlanır.
-        }
     }
 
     private static void KeepTemplateLogoInRange(IXLWorksheet sheet, string rangeAddress)
