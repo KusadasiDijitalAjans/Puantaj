@@ -9,6 +9,7 @@ internal static class AttendanceExcelStyle
     {
         cell.Style.Fill.PatternType = XLFillPatternValues.None;
         cell.Style.Fill.BackgroundColor = XLColor.NoColor;
+        cell.Style.Fill.PatternColor = XLColor.NoColor;
         cell.Style.Font.FontColor = XLColor.Black;
         cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
         cell.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;

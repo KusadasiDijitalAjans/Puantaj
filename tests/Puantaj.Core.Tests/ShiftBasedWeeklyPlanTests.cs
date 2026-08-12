@@ -14,7 +14,9 @@ public sealed class ShiftBasedWeeklyPlanTests
         new("B", "B", TimeSpan.FromHours(16), TimeSpan.Zero, true, 2),
         new("C", "C", TimeSpan.Zero, TimeSpan.FromHours(8), true, 3),
         new("HT", "Hafta Tatili", null, null, false, 4),
-        new("İA", "İşten Ayrıldı", null, null, false, 5)
+        new("RT", "Resmi Tatil", null, null, false, 5),
+        new("RP", "Raporlu", null, null, false, 6),
+        new("İA", "İşten Ayrıldı", null, null, false, 7)
     ];
 
     [Theory]
@@ -47,6 +49,18 @@ public sealed class ShiftBasedWeeklyPlanTests
     }
 
     [Fact]
+    public void WeeklyEmployeeNameAndPositionKeepTemplateFormattingWithoutFill()
+    {
+        var employee = Employee(1, "Resepsiyon");
+        using var output = ExportNormal([employee], [new Assignment(1, 1, Monday, "A", DateTimeOffset.UtcNow)]);
+        var sheet = output.Workbook.Worksheet(1);
+        Assert.Equal(XLFillPatternValues.None, sheet.Cell(7, 2).Style.Fill.PatternType);
+        Assert.Equal(XLFillPatternValues.None, sheet.Cell(7, 3).Style.Fill.PatternType);
+        Assert.NotEqual(XLBorderStyleValues.None, sheet.Cell(7, 2).Style.Border.BottomBorder);
+        Assert.NotEqual(XLBorderStyleValues.None, sheet.Cell(7, 3).Style.Border.BottomBorder);
+    }
+
+    [Fact]
     public void GroupsUseDominantRealWeeklyShiftAndConfiguredHours()
     {
         var employees = new[] { Employee(1, "Housman"), Employee(2, "Laundry"), Employee(3, "Kat İstekleri") };
@@ -72,6 +86,46 @@ public sealed class ShiftBasedWeeklyPlanTests
         using var output = ExportShifted(employees, assignments); var sheet = output.Workbook.Worksheet(1);
         var headers = sheet.Column(2).CellsUsed().Where(cell => cell.GetString().Contains("VARDİYASI", StringComparison.Ordinal)).Select(cell => cell.Address.RowNumber).ToArray();
         Assert.Equal([7, 14], headers);
+    }
+
+    [Fact]
+    public void EmptyWorkCellsStayUnfilledWhileSpecialCodesAreYellow()
+    {
+        var employee = Employee(1, "Housman");
+        var assignments = new[]
+        {
+            new Assignment(1, 1, Monday, "A", DateTimeOffset.UtcNow),
+            new Assignment(2, 1, Monday.AddDays(1), "HT", DateTimeOffset.UtcNow),
+            new Assignment(3, 1, Monday.AddDays(2), "RT", DateTimeOffset.UtcNow),
+            new Assignment(4, 1, Monday.AddDays(3), "RP", DateTimeOffset.UtcNow)
+        };
+        using var output = ExportShifted([employee], assignments); var sheet = output.Workbook.Worksheet(1);
+        var row = FindEmployeeRow(sheet, 1);
+        Assert.Equal(XLFillPatternValues.None, sheet.Cell(row, 12).Style.Fill.PatternType);
+        foreach (var column in new[] { 6, 8, 10 })
+            Assert.Equal(System.Drawing.Color.Yellow.ToArgb(), sheet.Cell(row, column).Style.Fill.BackgroundColor.Color.ToArgb());
+    }
+
+    [Fact]
+    public void ActiveShiftLegendUsesConfiguredOrderAndHoursAndMovesWithData()
+    {
+        var active = new AssignmentCodeDefinition[]
+        {
+            new("D", "D", TimeSpan.FromHours(23), TimeSpan.FromHours(7), true, 4),
+            Codes[2], Codes[0], Codes[1], Codes[3], Codes[4], Codes[5]
+        };
+        var all = active.Append(new AssignmentCodeDefinition("F", "F", TimeSpan.FromHours(5), TimeSpan.FromHours(13), true, 5)).ToArray();
+        var employees = Enumerable.Range(1, 6).Select(id => Employee(id, "Housman")).ToArray();
+        using var output = ExportShifted(employees, Assignments(employees), definitions: all, activeDefinitions: active);
+        var sheet = output.Workbook.Worksheet(1);
+        var htRow = sheet.Column(3).CellsUsed().Single(cell => cell.GetString().StartsWith("HT :", StringComparison.Ordinal)).Address.RowNumber;
+        Assert.Equal(17, htRow);
+        Assert.Equal(new[] { "A", "B", "C", "D" }, Enumerable.Range(htRow, 4).Select(row => sheet.Cell(row, 1).GetString()));
+        Assert.Equal("09.00 / 17.00", sheet.Cell(htRow, 2).GetString());
+        Assert.Equal("23.00 / 07.00", sheet.Cell(htRow + 3, 2).GetString());
+        Assert.DoesNotContain("F", sheet.Column(1).CellsUsed().Select(cell => cell.GetString()));
+        Assert.Contains("Department Head", sheet.CellsUsed().Select(cell => cell.GetString()));
+        Assert.Contains("Yİ : Yıllık İzin/ Annual Leave", sheet.CellsUsed().Select(cell => cell.GetString()));
     }
 
     [Fact]
@@ -103,10 +157,13 @@ public sealed class ShiftBasedWeeklyPlanTests
         Assert.DoesNotContain("Müdür", sheet.CellsUsed().Select(cell => cell.GetString()));
         Assert.DoesNotContain("İK", sheet.CellsUsed().Select(cell => cell.GetString()));
         Assert.DoesNotContain("GM", sheet.CellsUsed().Select(cell => cell.GetString()));
-        using var template = new XLWorkbook(ShiftBasedWeeklyExcelExporter.FindTemplate(Path.Combine(Root(), "templates")));
-        for (var footerRow = 28; footerRow <= 36; footerRow++)
-            for (var column = 1; column <= 19; column++)
-                Assert.Equal(template.Worksheet(1).Cell(footerRow, column).GetString(), sheet.Cell(footerRow, column).GetString());
+        using var templateStream = File.Open(ShiftBasedWeeklyExcelExporter.FindTemplate(Path.Combine(Root(), "templates")), FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        using var template = new XLWorkbook(templateStream);
+        var expectedFooterTexts = template.Worksheet(1).RangeUsed()!.CellsUsed()
+            .Where(cell => cell.Address.RowNumber >= 25 && cell.Address.ColumnNumber >= 3)
+            .Select(cell => cell.GetString()).Where(value => !string.IsNullOrWhiteSpace(value)).ToArray();
+        var actualTexts = sheet.CellsUsed().Select(cell => cell.GetString()).ToArray();
+        Assert.All(expectedFooterTexts, value => Assert.Contains(value, actualTexts));
     }
 
     [Fact]
@@ -147,10 +204,13 @@ public sealed class ShiftBasedWeeklyPlanTests
         new WeeklyExcelExporter().Export(WeeklyExcelExporter.FindWeeklyTemplate(Path.Combine(root, "templates")), path, "Otel", "Departman", Monday, employees, assignments, Codes);
         return new(path);
     }
-    private static Result ExportShifted(IReadOnlyList<Employee> employees, IReadOnlyList<Assignment> assignments, DateOnly? monday = null, AppSettings? settings = null)
+    private static Result ExportShifted(IReadOnlyList<Employee> employees, IReadOnlyList<Assignment> assignments,
+        DateOnly? monday = null, AppSettings? settings = null, IReadOnlyList<AssignmentCodeDefinition>? definitions = null,
+        IReadOnlyList<AssignmentCodeDefinition>? activeDefinitions = null)
     {
         var root = Root(); var path = Path.Combine(Path.GetTempPath(), $"shifted-{Guid.NewGuid():N}.xlsx");
-        new ShiftBasedWeeklyExcelExporter().Export(ShiftBasedWeeklyExcelExporter.FindTemplate(Path.Combine(root, "templates")), path, "Otel", "Departman", monday ?? Monday, employees, assignments, Codes, settings);
+        new ShiftBasedWeeklyExcelExporter().Export(ShiftBasedWeeklyExcelExporter.FindTemplate(Path.Combine(root, "templates")), path,
+            "Otel", "Departman", monday ?? Monday, employees, assignments, definitions ?? Codes, settings, activeDefinitions);
         return new(path);
     }
     private static string Root() { var directory = new DirectoryInfo(AppContext.BaseDirectory); while (directory is not null) { if (File.Exists(Path.Combine(directory.FullName, "Puantaj.sln"))) return directory.FullName; directory = directory.Parent; } throw new DirectoryNotFoundException(); }

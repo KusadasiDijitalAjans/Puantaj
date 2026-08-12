@@ -93,13 +93,14 @@ internal sealed class WeeklyAttendanceExportControl : UserControl
         var employees = _database.GetEmployeesForPeriod(monday, sunday);
         var assignments = _database.GetAssignments(monday, sunday);
         var definitions = _database.GetAssignmentCodes(false);
+        var activeDefinitions = _database.GetAssignmentCodes();
         var settings = _database.GetSettings();
         var templates = Path.Combine(AppContext.BaseDirectory, "templates");
         if (_shiftBased)
         {
             var template = ShiftBasedWeeklyExcelExporter.FindTemplate(templates);
             return Task.Run(() => new ShiftBasedWeeklyExcelExporter().Export(template, outputPath, settings.HotelName,
-                settings.DepartmentName, monday, employees, assignments, definitions, settings));
+                settings.DepartmentName, monday, employees, assignments, definitions, settings, activeDefinitions));
         }
         var weeklyTemplate = WeeklyExcelExporter.FindWeeklyTemplate(templates);
         return Task.Run(() => new WeeklyExcelExporter().Export(weeklyTemplate, outputPath, settings.HotelName,
