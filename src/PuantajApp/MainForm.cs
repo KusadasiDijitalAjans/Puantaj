@@ -57,14 +57,22 @@ public sealed class MainForm : Form
 
     private void OpenPuantaj(PuantajDatabase database)
     {
-        using var chooser = new Form { Text = "Puantaj", StartPosition = FormStartPosition.CenterParent, Size = new Size(440, 190), MinimizeBox = false, MaximizeBox = false };
-        var weekly = new Button { Text = "Haftalık Puantaj", Width = 170, Height = 52, Margin = new Padding(12) };
-        var monthly = new Button { Text = "Aylık Puantaj", Width = 170, Height = 52, Margin = new Padding(12) };
-        var panel = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.LeftToRight, Padding = new Padding(16, 28, 10, 10) };
-        weekly.Click += (_, _) => { chooser.Hide(); ShowDialog(new WeeklyAttendanceExportControl(database, (int)_year.Value, _month.SelectedIndex + 1), "Haftalık Puantaj", new Size(570, 330)); chooser.Close(); };
+        using var chooser = new Form { Text = "Puantaj", StartPosition = FormStartPosition.CenterParent, Size = new Size(700, 390), MinimizeBox = false, MaximizeBox = false };
+        var monthly = ReportChoice("Aylık Puantaj", "Mevcut aylık puantaj raporunu oluşturur.");
+        var weekly = ReportChoice("Haftalık Çalışma Planı", "Housman, Laundry ve Kat İstekleri görevleri bu rapora dahil edilmez. Bu personeller için Vardiyalı Çalışma Planını kullanın.");
+        var shifted = ReportChoice("Vardiyalı Çalışma Planı", "Görev tanımında Housman, Laundry veya Kat İstekleri bulunan personeller bu raporda gösterilir.");
+        var panel = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false, Padding = new Padding(18) };
+        weekly.Click += (_, _) => { chooser.Hide(); ShowDialog(new WeeklyAttendanceExportControl(database, (int)_year.Value, _month.SelectedIndex + 1), "Haftalık Çalışma Planı", new Size(570, 330)); chooser.Close(); };
+        shifted.Click += (_, _) => { chooser.Hide(); ShowDialog(new WeeklyAttendanceExportControl(database, (int)_year.Value, _month.SelectedIndex + 1, true), "Vardiyalı Çalışma Planı", new Size(570, 330)); chooser.Close(); };
         monthly.Click += (_, _) => { chooser.Hide(); OpenMonthlyExport(database); chooser.Close(); };
-        panel.Controls.Add(weekly); panel.Controls.Add(monthly); chooser.Controls.Add(panel); chooser.ShowDialog(this);
+        panel.Controls.Add(monthly); panel.Controls.Add(weekly); panel.Controls.Add(shifted); chooser.Controls.Add(panel); chooser.ShowDialog(this);
     }
+
+    private static Button ReportChoice(string title, string description) => new()
+    {
+        Text = $"{title}\r\n{description}", Width = 635, Height = 92, TextAlign = ContentAlignment.MiddleLeft,
+        Padding = new Padding(12, 4, 12, 4), Margin = new Padding(4), AutoEllipsis = true
+    };
 
     private void UpdateClock()
     {

@@ -4,6 +4,7 @@ using System.Text.RegularExpressions;
 using ClosedXML.Excel;
 using Puantaj.Core.Calendar;
 using Puantaj.Core.Data;
+using Puantaj.Core.Planning;
 
 namespace Puantaj.Core.Excel;
 
@@ -27,7 +28,8 @@ public sealed class WeeklyExcelExporter
         var resolver = new AssignmentCodeResolver(allDefinitions);
         var ended = assignments.Where(item => resolver.Resolve(item.Code).IsEmploymentEnded)
             .GroupBy(item => item.EmployeeId).ToDictionary(group => group.Key, group => group.Min(item => item.WorkDate));
-        var visible = employees.Where(employee => IntersectsWeek(employee, monday, sunday, assignments, ended))
+        var visible = employees.Where(employee => !ShiftBasedEmployeeFilter.IsShiftBasedEmployee(employee)
+                && IntersectsWeek(employee, monday, sunday, assignments, ended))
             .OrderBy(employee => employee.DisplayOrder).ThenBy(employee => employee.FullName).ToArray();
 
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(outputPath))!);
