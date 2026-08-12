@@ -60,6 +60,52 @@ public sealed class ShiftBasedWeeklyPlanTests
         Assert.NotEqual(XLBorderStyleValues.None, sheet.Cell(7, 3).Style.Border.BottomBorder);
     }
 
+    [Theory]
+    [InlineData(false, 2026, 7, 13)]
+    [InlineData(true, 2026, 7, 13)]
+    [InlineData(false, 2026, 8, 31)]
+    [InlineData(true, 2026, 8, 31)]
+    public void WeeklyPlanExportsWriteRealDatesAndRangeAcrossMonthBoundaries(bool shifted, int year, int month, int day)
+    {
+        var monday = new DateOnly(year, month, day);
+        var employee = Employee(1, shifted ? "Housman" : "Resepsiyon");
+        var assignments = new[] { new Assignment(1, 1, monday, "A", DateTimeOffset.UtcNow) };
+        using var output = shifted ? ExportShifted([employee], assignments, monday) : ExportNormal([employee], assignments, monday);
+        Assert.All(output.Workbook.Worksheets, sheet => AssertWeekDates(sheet, monday));
+    }
+
+    [Fact]
+    public void WeeklyPlanDatesAreWrittenToEveryGeneratedPage()
+    {
+        var normalEmployees = Enumerable.Range(1, 40).Select(id => Employee(id, "Resepsiyon")).ToArray();
+        var shiftedEmployees = Enumerable.Range(101, 40).Select(id => Employee(id, "Housman")).ToArray();
+        using var normal = ExportNormal(normalEmployees, AssignmentsFor(normalEmployees, Monday), Monday);
+        using var shifted = ExportShifted(shiftedEmployees, AssignmentsFor(shiftedEmployees, Monday), Monday);
+        Assert.True(normal.Workbook.Worksheets.Count > 1);
+        Assert.True(shifted.Workbook.Worksheets.Count > 1);
+        Assert.All(normal.Workbook.Worksheets, sheet => AssertWeekDates(sheet, Monday));
+        Assert.All(shifted.Workbook.Worksheets, sheet => AssertWeekDates(sheet, Monday));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void WritingWeeklyPlanDatesPreservesTemplateCellStyles(bool shifted)
+    {
+        var root = Root();
+        var templatePath = shifted
+            ? ShiftBasedWeeklyExcelExporter.FindTemplate(Path.Combine(root, "templates"))
+            : WeeklyExcelExporter.FindWeeklyTemplate(Path.Combine(root, "templates"));
+        using var templateStream = File.Open(templatePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        using var template = new XLWorkbook(templateStream);
+        var employee = Employee(1, shifted ? "Housman" : "Resepsiyon");
+        using var output = shifted
+            ? ExportShifted([employee], [new Assignment(1, 1, Monday, "A", DateTimeOffset.UtcNow)])
+            : ExportNormal([employee], [new Assignment(1, 1, Monday, "A", DateTimeOffset.UtcNow)]);
+        foreach (var address in new[] { "D4", "F4", "H4", "J4", "L4", "N4", "P4", "R4" })
+            AssertSameStyle(template.Worksheet(1).Cell(address), output.Workbook.Worksheet(1).Cell(address));
+    }
+
     [Fact]
     public void GroupsUseDominantRealWeeklyShiftAndConfiguredHours()
     {
@@ -196,12 +242,38 @@ public sealed class ShiftBasedWeeklyPlanTests
 
     private static Employee Employee(int id, string position) => new(id, $"Personel {id}", true, id, DateTimeOffset.UtcNow, position);
     private static IReadOnlyList<Assignment> Assignments(IEnumerable<Employee> employees) => employees.Select((employee, index) => new Assignment(index + 1, employee.Id, Monday, index % 3 == 0 ? "A" : index % 3 == 1 ? "B" : "C", DateTimeOffset.UtcNow)).ToArray();
+    private static IReadOnlyList<Assignment> AssignmentsFor(IEnumerable<Employee> employees, DateOnly monday) => employees
+        .Select((employee, index) => new Assignment(index + 1, employee.Id, monday, index % 3 == 0 ? "A" : index % 3 == 1 ? "B" : "C", DateTimeOffset.UtcNow)).ToArray();
     private static int FindEmployeeRow(IXLWorksheet sheet, int id) => sheet.Column(2).CellsUsed().Single(cell => cell.GetString() == $"Personel {id}").Address.RowNumber;
 
-    private static Result ExportNormal(IReadOnlyList<Employee> employees, IReadOnlyList<Assignment> assignments)
+    private static void AssertWeekDates(IXLWorksheet sheet, DateOnly monday)
+    {
+        var columns = new[] { 4, 6, 8, 10, 12, 14, 16 };
+        for (var day = 0; day < columns.Length; day++)
+            Assert.Equal(monday.AddDays(day).ToDateTime(TimeOnly.MinValue), sheet.Cell(4, columns[day]).GetDateTime());
+        Assert.Equal($"{monday:dd.MM.yyyy} - {monday.AddDays(6):dd.MM.yyyy}", sheet.Cell("R4").GetString());
+    }
+
+    private static void AssertSameStyle(IXLCell expected, IXLCell actual)
+    {
+        Assert.Equal(expected.Style.NumberFormat.Format, actual.Style.NumberFormat.Format);
+        Assert.Equal(expected.Style.Fill.PatternType, actual.Style.Fill.PatternType);
+        Assert.Equal(expected.Style.Fill.BackgroundColor, actual.Style.Fill.BackgroundColor);
+        Assert.Equal(expected.Style.Border.LeftBorder, actual.Style.Border.LeftBorder);
+        Assert.Equal(expected.Style.Border.RightBorder, actual.Style.Border.RightBorder);
+        Assert.Equal(expected.Style.Border.TopBorder, actual.Style.Border.TopBorder);
+        Assert.Equal(expected.Style.Border.BottomBorder, actual.Style.Border.BottomBorder);
+        Assert.Equal(expected.Style.Font.FontName, actual.Style.Font.FontName);
+        Assert.Equal(expected.Style.Font.FontSize, actual.Style.Font.FontSize);
+        Assert.Equal(expected.Style.Font.Bold, actual.Style.Font.Bold);
+        Assert.Equal(expected.Style.Alignment.Horizontal, actual.Style.Alignment.Horizontal);
+        Assert.Equal(expected.Style.Alignment.Vertical, actual.Style.Alignment.Vertical);
+    }
+
+    private static Result ExportNormal(IReadOnlyList<Employee> employees, IReadOnlyList<Assignment> assignments, DateOnly? monday = null)
     {
         var root = Root(); var path = Path.Combine(Path.GetTempPath(), $"normal-{Guid.NewGuid():N}.xlsx");
-        new WeeklyExcelExporter().Export(WeeklyExcelExporter.FindWeeklyTemplate(Path.Combine(root, "templates")), path, "Otel", "Departman", Monday, employees, assignments, Codes);
+        new WeeklyExcelExporter().Export(WeeklyExcelExporter.FindWeeklyTemplate(Path.Combine(root, "templates")), path, "Otel", "Departman", monday ?? Monday, employees, assignments, Codes);
         return new(path);
     }
     private static Result ExportShifted(IReadOnlyList<Employee> employees, IReadOnlyList<Assignment> assignments,

@@ -81,7 +81,7 @@ public sealed class WeeklyExcelExporter
         var week = CalendarHelper.Week(monday);
         sheet.Cell("C3").Value = hotelName;
         sheet.Cell("C4").Value = departmentName;
-        sheet.Cell("R4").Value = $"{monday:dd.MM.yyyy} - {week[6]:dd.MM.yyyy}";
+        WeeklyPlanDateWriter.Write(sheet, monday);
 
         for (var row = FirstEmployeeRow; row <= LastEmployeeRow; row++)
         {
