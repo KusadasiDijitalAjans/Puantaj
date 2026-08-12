@@ -76,7 +76,7 @@ public sealed class MonthlyExcelExporter
             else sheet.Cell(6, column).Clear(XLClearOptions.Contents);
             for (var row = FirstEmployeeRow; row <= lastEmployeeRow; row++)
             {
-                var cell = sheet.Cell(row, column); cell.Clear(XLClearOptions.Contents); ClearAttendanceColor(cell);
+                var cell = sheet.Cell(row, column); cell.Clear(XLClearOptions.Contents); AttendanceExcelStyle.Clear(cell);
             }
         }
 
@@ -102,7 +102,7 @@ public sealed class MonthlyExcelExporter
                 for (var day = 1; day <= days; day++)
                 {
                     if (new DateOnly(year, month, day) >= hireDate) break;
-                    BeforeHire(sheet.Cell(row, FirstDayColumn + day - 1));
+                    AttendanceExcelStyle.BeforeHire(sheet.Cell(row, FirstDayColumn + day - 1));
                 }
         }
 
@@ -119,52 +119,15 @@ public sealed class MonthlyExcelExporter
             if (ended.TryGetValue(assignment.EmployeeId, out var endDate) && assignment.WorkDate >= endDate) continue;
             var cell = sheet.Cell(row, FirstDayColumn + assignment.WorkDate.Day - 1);
             var definition = resolver.Resolve(assignment.Code); var value = mapper.Map(assignment.Code); cell.Value = value;
-            ApplyAttendanceColor(cell, definition);
+            AttendanceExcelStyle.ApplyCode(cell, definition);
         }
         foreach (var pair in ended.Where(pair => pair.Value.Year == year && pair.Value.Month == month && employeeRows.ContainsKey(pair.Key)))
-            for (var day = pair.Value.Day + 1; day <= days; day++) Blackout(sheet.Cell(employeeRows[pair.Key], FirstDayColumn + day - 1));
+            for (var day = pair.Value.Day + 1; day <= days; day++) AttendanceExcelStyle.Blackout(sheet.Cell(employeeRows[pair.Key], FirstDayColumn + day - 1));
 
         WriteSummaryHeaders(sheet);
         WriteDailySummaryFormulas(sheet, days);
         ExcelBranding.ApplyMonthly(sheet, settings);
         ExcelPageSetup.ApplyA4(sheet, "B2:AT53", XLPageOrientation.Landscape);
-    }
-
-    private static void ClearAttendanceColor(IXLCell cell)
-    {
-        cell.Style.Fill.PatternType = XLFillPatternValues.None;
-        cell.Style.Fill.BackgroundColor = XLColor.NoColor;
-        cell.Style.Font.FontColor = XLColor.Black;
-        cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
-        cell.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
-    }
-
-    private static void ApplyAttendanceColor(IXLCell cell, AssignmentCodeDefinition definition)
-    {
-        ClearAttendanceColor(cell);
-        if (!definition.IsWorkShift && !definition.IsEmploymentEnded)
-        {
-            cell.Style.Fill.PatternType = XLFillPatternValues.Solid;
-            cell.Style.Fill.BackgroundColor = XLColor.Yellow;
-        }
-    }
-
-    private static void Blackout(IXLCell cell)
-    {
-        cell.Clear(XLClearOptions.Contents);
-        cell.Style.Fill.PatternType = XLFillPatternValues.Solid;
-        cell.Style.Fill.BackgroundColor = XLColor.Black;
-        cell.Style.Fill.PatternColor = XLColor.Black;
-        cell.Style.Font.FontColor = XLColor.White;
-    }
-
-    private static void BeforeHire(IXLCell cell)
-    {
-        cell.Clear(XLClearOptions.Contents);
-        cell.Style.Fill.PatternType = XLFillPatternValues.Solid;
-        cell.Style.Fill.BackgroundColor = XLColor.LightPink;
-        cell.Style.Fill.PatternColor = XLColor.LightPink;
-        cell.Style.Font.FontColor = XLColor.Black;
     }
 
     private static IReadOnlyList<AssignmentCodeDefinition> LegacyDefinitions() => AttendanceCodes.All

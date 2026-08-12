@@ -86,14 +86,13 @@ public sealed class OutputTests
         using (var weekly = new XLWorkbook(weeklyOutput))
         {
             var sheet = Assert.Single(weekly.Worksheets);
-            Assert.Equal("A", sheet.Cell("D9").GetString());
-            Assert.Equal("HT", sheet.Cell("F9").GetString());
+            Assert.Equal("A", sheet.Cell("D7").GetString());
+            Assert.Equal("HT", sheet.Cell("F7").GetString());
             Assert.Equal(XLPaperSize.A4Paper, sheet.PageSetup.PaperSize);
             Assert.NotEmpty(sheet.PageSetup.PrintAreas);
             Assert.Equal(1, sheet.PageSetup.PagesWide);
             Assert.True(sheet.PageSetup.CenterHorizontally);
-            Assert.Equal(new DateOnly(2026, 7, 20).ToDateTime(TimeOnly.MinValue), sheet.Cell("D6").GetDateTime());
-            Assert.Equal(new DateOnly(2026, 7, 26).ToDateTime(TimeOnly.MinValue), sheet.Cell("P6").GetDateTime());
+            Assert.Equal("20.07.2026 - 26.07.2026", sheet.Cell("R4").GetString());
         }
         using (var monthly = new XLWorkbook(monthlyOutput))
         {
@@ -113,9 +112,14 @@ public sealed class OutputTests
     public void TemplateSearchIgnoresExcelLockFiles()
     {
         var root = FindProjectRoot();
-        var templates = Path.Combine(root, "templates");
-        var weeklyTemplate = WeeklyExcelExporter.FindWeeklyTemplate(templates);
-        var monthlyTemplate = MonthlyExcelExporter.FindMonthlyTemplate(templates);
+        var sourceTemplates = Path.Combine(root, "templates");
+        var templates = Path.Combine(Path.GetTempPath(), $"puantaj-template-search-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(templates);
+        var weeklySource = WeeklyExcelExporter.FindWeeklyTemplate(sourceTemplates);
+        var monthlySource = MonthlyExcelExporter.FindMonthlyTemplate(sourceTemplates);
+        var weeklyTemplate = Path.Combine(templates, Path.GetFileName(weeklySource));
+        var monthlyTemplate = Path.Combine(templates, Path.GetFileName(monthlySource));
+        CopyShared(weeklySource, weeklyTemplate); CopyShared(monthlySource, monthlyTemplate);
         var weeklyLockFile = Path.Combine(templates, $"~${Path.GetFileName(weeklyTemplate)}");
         var monthlyLockFile = Path.Combine(templates, $"~${Path.GetFileName(monthlyTemplate)}");
         File.WriteAllBytes(weeklyLockFile, [0]);
@@ -127,8 +131,7 @@ public sealed class OutputTests
         }
         finally
         {
-            File.Delete(weeklyLockFile);
-            File.Delete(monthlyLockFile);
+            Directory.Delete(templates, true);
         }
     }
 
@@ -244,8 +247,8 @@ public sealed class OutputTests
                 [new Assignment(1, 1, monday.AddDays(2), "F", DateTimeOffset.UtcNow)], definitions);
             using var workbook = new XLWorkbook(weeklyOutput);
             var sheet = workbook.Worksheets.Single();
-            Assert.True(sheet.Cell("H9").IsEmpty());
-            Assert.Equal(System.Drawing.Color.Black.ToArgb(), sheet.Cell("H9").Style.Fill.BackgroundColor.Color.ToArgb());
+            Assert.True(sheet.Cell("H7").IsEmpty());
+            Assert.Equal(System.Drawing.Color.Black.ToArgb(), sheet.Cell("H7").Style.Fill.BackgroundColor.Color.ToArgb());
             Assert.DoesNotContain("F", sheet.CellsUsed().Select(cell => cell.GetString()));
         }
         finally { }
@@ -275,5 +278,15 @@ public sealed class OutputTests
         return directory?.FullName ?? throw new DirectoryNotFoundException("Proje kökü bulunamadı.");
     }
 
-    private static string Hash(string path) => Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path)));
+    private static string Hash(string path)
+    {
+        using var stream = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        return Convert.ToHexString(SHA256.HashData(stream));
+    }
+
+    private static void CopyShared(string source, string destination)
+    {
+        using var input = File.Open(source, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        using var output = File.Create(destination); input.CopyTo(output);
+    }
 }
