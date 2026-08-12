@@ -118,7 +118,6 @@ public sealed class WeeklyExcelExporter
             for (var day = Math.Max(0, pair.Value.DayNumber - monday.DayNumber); day < 7; day++)
                 AttendanceExcelStyle.Blackout(sheet.Cell(rows[pair.Key], WorkTimeColumns[day]));
 
-        ExcelBranding.ApplyWeekly(sheet, settings);
         ExcelPageSetup.ApplyA4(sheet, "A1:S36", XLPageOrientation.Landscape);
     }
 
