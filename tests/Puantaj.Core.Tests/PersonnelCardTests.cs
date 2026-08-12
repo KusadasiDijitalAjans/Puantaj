@@ -111,7 +111,7 @@ public sealed class PersonnelCardTests : IDisposable
         new WeeklyExcelExporter().Export(WeeklyExcelExporter.FindWeeklyTemplate(Path.Combine(root, "templates")), weekly, "Test Otel", "Teknik Servis", new DateOnly(2025, 6, 2), [employee], assignments, definitions);
         new MonthlyExcelExporter().Export(MonthlyExcelExporter.FindMonthlyTemplate(Path.Combine(root, "templates")), monthly, "Test Otel", "Teknik Servis", 2025, 6, [employee], assignments, definitions);
         using var weeklyBook = new XLWorkbook(weekly); using var monthlyBook = new XLWorkbook(monthly);
-        Assert.Equal("Yİ", weeklyBook.Worksheet(1).Cell(9, 8).GetString());
+        Assert.Equal("Yİ", weeklyBook.Worksheet(1).Cell(7, 8).GetString());
         Assert.Equal("X", monthlyBook.Worksheet(1).Cell(7, 5).GetString()); Assert.Equal("Yİ", monthlyBook.Worksheet(1).Cell(7, 8).GetString());
         Assert.False(string.IsNullOrWhiteSpace(weeklyBook.Worksheet(1).PageSetup.PrintAreas.First().RangeAddress.ToString()));
         Assert.False(string.IsNullOrWhiteSpace(monthlyBook.Worksheet(1).PageSetup.PrintAreas.First().RangeAddress.ToString()));

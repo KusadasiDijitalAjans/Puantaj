@@ -9,10 +9,12 @@ internal static class ExcelBranding
     {
         if (settings is null) return;
         AddLogo(sheet, settings, "A1");
-        sheet.Cell("B33").Value = settings.DepartmentManager;
-        sheet.Cell("B34").Value = settings.DepartmentManagerTitle;
-        sheet.Cell("J33").Value = settings.HumanResourcesManager;
-        sheet.Cell("J34").Value = settings.HumanResourcesTitle;
+        sheet.Cell("K31").Value = settings.DepartmentManager;
+        sheet.Cell("K32").Value = settings.DepartmentManagerTitle;
+        sheet.Cell("Q31").Value = settings.HumanResourcesManager;
+        sheet.Cell("Q32").Value = settings.HumanResourcesTitle;
+        sheet.Cell("Q33").Value = settings.GeneralManager;
+        sheet.Cell("Q34").Value = settings.GeneralManagerTitle;
     }
 
     public static void ApplyMonthly(IXLWorksheet sheet, AppSettings? settings)

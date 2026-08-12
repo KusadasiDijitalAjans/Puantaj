@@ -12,4 +12,14 @@ public static class CalendarHelper
 
     public static IReadOnlyList<DateOnly> Week(DateOnly monday) =>
         Enumerable.Range(0, 7).Select(monday.AddDays).ToArray();
+
+    public static IReadOnlyList<DateOnly> WeeksIntersectingMonth(int year, int month)
+    {
+        var first = new DateOnly(year, month, 1);
+        var last = first.AddMonths(1).AddDays(-1);
+        var firstMonday = StartOfWeek(first);
+        var lastMonday = StartOfWeek(last);
+        return Enumerable.Range(0, (lastMonday.DayNumber - firstMonday.DayNumber) / 7 + 1)
+            .Select(index => firstMonday.AddDays(index * 7)).ToArray();
+    }
 }

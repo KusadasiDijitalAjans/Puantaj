@@ -39,7 +39,7 @@ public sealed class MainForm : Form
         menu.Controls.Add(HeaderButton("▣ Kaydet", (_, _) => _card.SaveCurrentWeek()));
         Button printButton = null!;
         printButton = HeaderButton("▤ Yazdır", async (_, _) => await RunExclusive(printButton, _card.PrintCurrentWeekAsync));
-        menu.Controls.Add(printButton); menu.Controls.Add(HeaderButton("📅 Aylık Puantaj", (_, _) => OpenMonthlyExport(database)));
+        menu.Controls.Add(printButton); menu.Controls.Add(HeaderButton("📅 Puantaj", (_, _) => OpenPuantaj(database)));
         var right = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 3, BackColor = Color.Transparent };
         right.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 82)); right.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 76)); right.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         right.Controls.Add(HeaderButton("↻ Yenile", (_, _) => _card.ReloadSettings()), 0, 0);
@@ -53,6 +53,17 @@ public sealed class MainForm : Form
         var settings = database.GetSettings();
         ShowDialog(new MonthlyExportControl(database, () => (int)_year.Value, () => _month.SelectedIndex + 1,
             settings.HotelName, settings.DepartmentName), "Aylık Puantaj", new Size(560, 220));
+    }
+
+    private void OpenPuantaj(PuantajDatabase database)
+    {
+        using var chooser = new Form { Text = "Puantaj", StartPosition = FormStartPosition.CenterParent, Size = new Size(440, 190), MinimizeBox = false, MaximizeBox = false };
+        var weekly = new Button { Text = "Haftalık Puantaj", Width = 170, Height = 52, Margin = new Padding(12) };
+        var monthly = new Button { Text = "Aylık Puantaj", Width = 170, Height = 52, Margin = new Padding(12) };
+        var panel = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.LeftToRight, Padding = new Padding(16, 28, 10, 10) };
+        weekly.Click += (_, _) => { chooser.Hide(); ShowDialog(new WeeklyAttendanceExportControl(database, (int)_year.Value, _month.SelectedIndex + 1), "Haftalık Puantaj", new Size(570, 330)); chooser.Close(); };
+        monthly.Click += (_, _) => { chooser.Hide(); OpenMonthlyExport(database); chooser.Close(); };
+        panel.Controls.Add(weekly); panel.Controls.Add(monthly); chooser.Controls.Add(panel); chooser.ShowDialog(this);
     }
 
     private void UpdateClock()

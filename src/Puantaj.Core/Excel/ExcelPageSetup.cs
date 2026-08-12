@@ -26,19 +26,22 @@ internal static class ExcelPageSetup
     {
         using var document = SpreadsheetDocument.Open(path, true);
         var workbookPart = document.WorkbookPart ?? throw new InvalidOperationException("Excel workbook bölümü bulunamadı.");
-        var sheet = workbookPart.Workbook.Sheets?.Elements<Sheet>().Single()
-                    ?? throw new InvalidOperationException("Excel sayfası bulunamadı.");
-        var worksheetPart = (WorksheetPart)workbookPart.GetPartById(sheet.Id!);
-        var worksheet = worksheetPart.Worksheet;
-        var pageSetup = worksheet.Elements<PageSetup>().FirstOrDefault() ?? worksheet.AppendChild(new PageSetup());
-        pageSetup.PaperSize = 9U; // A4
-        pageSetup.Orientation = OrientationValues.Landscape;
-        pageSetup.FitToWidth = 1U;
-        pageSetup.FitToHeight = 1U;
-        pageSetup.Scale = null;
-        var properties = worksheet.GetFirstChild<SheetProperties>() ?? worksheet.PrependChild(new SheetProperties());
-        properties.PageSetupProperties ??= new PageSetupProperties();
-        properties.PageSetupProperties.FitToPage = true;
-        worksheet.Save();
+        var sheets = workbookPart.Workbook.Sheets?.Elements<Sheet>().ToArray()
+                     ?? throw new InvalidOperationException("Excel sayfası bulunamadı.");
+        foreach (var sheet in sheets)
+        {
+            var worksheetPart = (WorksheetPart)workbookPart.GetPartById(sheet.Id!);
+            var worksheet = worksheetPart.Worksheet;
+            var pageSetup = worksheet.Elements<PageSetup>().FirstOrDefault() ?? worksheet.AppendChild(new PageSetup());
+            pageSetup.PaperSize = 9U;
+            pageSetup.Orientation = OrientationValues.Landscape;
+            pageSetup.FitToWidth = 1U;
+            pageSetup.FitToHeight = 1U;
+            pageSetup.Scale = null;
+            var properties = worksheet.GetFirstChild<SheetProperties>() ?? worksheet.PrependChild(new SheetProperties());
+            properties.PageSetupProperties ??= new PageSetupProperties();
+            properties.PageSetupProperties.FitToPage = true;
+            worksheet.Save();
+        }
     }
 }
