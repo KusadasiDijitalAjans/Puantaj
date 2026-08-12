@@ -9,6 +9,7 @@ namespace PuantajApp;
 internal sealed class WeeklyAttendanceExportControl : UserControl
 {
     private readonly PuantajDatabase _database;
+    private readonly bool _shiftBased;
     private readonly NumericUpDown _year = new() { Minimum = 2000, Maximum = 2100, Width = 90 };
     private readonly ComboBox _month = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 150 };
     private readonly ComboBox _week = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 250 };
@@ -16,9 +17,10 @@ internal sealed class WeeklyAttendanceExportControl : UserControl
     private readonly Button _save = new() { Text = "Bilgisayara Kaydet", AutoSize = true };
     private readonly Label _status = new() { AutoSize = true };
 
-    public WeeklyAttendanceExportControl(PuantajDatabase database, int selectedYear, int selectedMonth)
+    public WeeklyAttendanceExportControl(PuantajDatabase database, int selectedYear, int selectedMonth, bool shiftBased = false)
     {
         _database = database;
+        _shiftBased = shiftBased;
         _year.Value = selectedYear;
         _month.Items.AddRange(CultureInfo.GetCultureInfo("tr-TR").DateTimeFormat.MonthNames.Take(12).Cast<object>().ToArray());
         _month.SelectedIndex = selectedMonth - 1;
@@ -65,7 +67,8 @@ internal sealed class WeeklyAttendanceExportControl : UserControl
         using var dialog = new SaveFileDialog
         {
             Filter = isPdf ? "PDF dosyası (*.pdf)|*.pdf" : "Excel dosyası (*.xlsx)|*.xlsx",
-            FileName = WeeklyExcelExporter.CreateOutputFileName(selected.Monday, extension)
+            FileName = _shiftBased ? ShiftBasedWeeklyExcelExporter.CreateOutputFileName(selected.Monday, extension)
+                : WeeklyExcelExporter.CreateOutputFileName(selected.Monday, extension)
         };
         if (dialog.ShowDialog(this) != DialogResult.OK) return;
         _save.Enabled = false; _status.Text = "Hazırlanıyor…";
@@ -91,8 +94,15 @@ internal sealed class WeeklyAttendanceExportControl : UserControl
         var assignments = _database.GetAssignments(monday, sunday);
         var definitions = _database.GetAssignmentCodes(false);
         var settings = _database.GetSettings();
-        var template = WeeklyExcelExporter.FindWeeklyTemplate(Path.Combine(AppContext.BaseDirectory, "templates"));
-        return Task.Run(() => new WeeklyExcelExporter().Export(template, outputPath, settings.HotelName,
+        var templates = Path.Combine(AppContext.BaseDirectory, "templates");
+        if (_shiftBased)
+        {
+            var template = ShiftBasedWeeklyExcelExporter.FindTemplate(templates);
+            return Task.Run(() => new ShiftBasedWeeklyExcelExporter().Export(template, outputPath, settings.HotelName,
+                settings.DepartmentName, monday, employees, assignments, definitions, settings));
+        }
+        var weeklyTemplate = WeeklyExcelExporter.FindWeeklyTemplate(templates);
+        return Task.Run(() => new WeeklyExcelExporter().Export(weeklyTemplate, outputPath, settings.HotelName,
             settings.DepartmentName, monday, employees, assignments, definitions, settings));
     }
 
