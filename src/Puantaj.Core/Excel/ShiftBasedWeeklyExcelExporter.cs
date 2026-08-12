@@ -19,7 +19,8 @@ public sealed class ShiftBasedWeeklyExcelExporter
 
     public string Export(string templatePath, string outputPath, string hotelName, string departmentName,
         DateOnly weekStart, IReadOnlyList<Employee> employees, IReadOnlyList<Assignment> assignments,
-        IReadOnlyList<AssignmentCodeDefinition> definitions, AppSettings? settings = null)
+        IReadOnlyList<AssignmentCodeDefinition> definitions, AppSettings? settings = null,
+        IReadOnlyList<AssignmentCodeDefinition>? activeDefinitions = null)
     {
         if (!File.Exists(templatePath)) throw new FileNotFoundException("Vardiyalı çalışma planı şablonu bulunamadı.", templatePath);
         var monday = CalendarHelper.StartOfWeek(weekStart); var sunday = monday.AddDays(6);
@@ -43,7 +44,7 @@ public sealed class ShiftBasedWeeklyExcelExporter
         for (var page = 0; page < pages.Count; page++)
         {
             FillPage(sheets[page], pages[page], assignments, definitions, settings, hotelName, departmentName,
-                monday, ended, page * AvailableRowsPerPage);
+                monday, ended, page * AvailableRowsPerPage, activeDefinitions ?? definitions);
             sheets[page].Name = pages.Count == 1 ? "Vardiyalı Çalışma Planı" : $"Vardiyalı Plan {page + 1}";
         }
         workbook.SaveAs(outputPath, new SaveOptions { GenerateCalculationChain = false });
@@ -92,11 +93,16 @@ public sealed class ShiftBasedWeeklyExcelExporter
 
     private static void FillPage(IXLWorksheet sheet, IReadOnlyList<ShiftGroup> groups,
         IReadOnlyList<Assignment> assignments, IReadOnlyList<AssignmentCodeDefinition> definitions, AppSettings? settings,
-        string hotelName, string departmentName, DateOnly monday, IReadOnlyDictionary<long, DateOnly> ended, int offset)
+        string hotelName, string departmentName, DateOnly monday, IReadOnlyDictionary<long, DateOnly> ended, int offset,
+        IReadOnlyList<AssignmentCodeDefinition> activeDefinitions)
     {
         sheet.Cell("C3").Value = hotelName; sheet.Cell("C4").Value = departmentName;
         sheet.Cell("R4").Value = $"{monday:dd.MM.yyyy} - {monday.AddDays(6):dd.MM.yyyy}";
-        for (var row = FirstDataRow; row <= LastDataRow; row++)
+        var footerStart = FindFooterStart(sheet);
+        var usedDataRows = groups.Sum(group => group.Employees.Count + 1);
+        var desiredFooterStart = FirstDataRow + usedDataRows + 1;
+        footerStart = MoveFooter(sheet, footerStart, desiredFooterStart);
+        for (var row = FirstDataRow; row < footerStart; row++)
         {
             sheet.Range(row, 1, row, 17).Clear(XLClearOptions.Contents);
             for (var day = 0; day < 7; day++) AttendanceExcelStyle.Clear(sheet.Cell(row, WorkColumns[day]));
@@ -123,8 +129,62 @@ public sealed class ShiftBasedWeeklyExcelExporter
                     for (var day = Math.Max(0, endDate.DayNumber - monday.DayNumber); day < 7; day++) AttendanceExcelStyle.Blackout(sheet.Cell(row, WorkColumns[day]));
             }
         }
-        ExcelPageSetup.ApplyA4(sheet, "A1:S36", XLPageOrientation.Landscape);
+        WriteShiftLegend(sheet, footerStart, activeDefinitions);
+        var footerEnd = sheet.LastRowUsed()?.RowNumber() ?? footerStart;
+        ExcelPageSetup.ApplyA4(sheet, $"A1:S{footerEnd}", XLPageOrientation.Landscape);
     }
+
+    private static int FindFooterStart(IXLWorksheet sheet)
+    {
+        var marker = sheet.Column(3).CellsUsed().FirstOrDefault(cell =>
+            cell.GetString().TrimStart().StartsWith("HT :", StringComparison.OrdinalIgnoreCase));
+        return marker?.Address.RowNumber ?? throw new InvalidDataException("Vardiya açıklama alanı şablonda bulunamadı.");
+    }
+
+    private static int MoveFooter(IXLWorksheet sheet, int currentStart, int desiredStart)
+    {
+        if (desiredStart < currentStart)
+            sheet.Rows(desiredStart, currentStart - 1).Delete();
+        else if (desiredStart > currentStart)
+            sheet.Row(currentStart).InsertRowsAbove(desiredStart - currentStart);
+        return desiredStart;
+    }
+
+    private static void WriteShiftLegend(IXLWorksheet sheet, int footerStart,
+        IReadOnlyList<AssignmentCodeDefinition> activeDefinitions)
+    {
+        var shifts = activeDefinitions.Where(item => item.IsWorkShift)
+            .OrderBy(item => item.DisplayOrder).ThenBy(item => item.Code, StringComparer.OrdinalIgnoreCase).ToArray();
+        var noteRow = sheet.Column(1).CellsUsed().FirstOrDefault(cell =>
+            cell.GetString().StartsWith("Yukarıdaki çalışma saatleri", StringComparison.OrdinalIgnoreCase))?.Address.RowNumber
+            ?? footerStart + Math.Max(7, shifts.Length + 1);
+        if (footerStart + shifts.Length >= noteRow)
+        {
+            var extraRows = footerStart + shifts.Length - noteRow + 1;
+            sheet.Row(noteRow).InsertRowsAbove(extraRows);
+            noteRow += extraRows;
+        }
+        var codeStyle = sheet.Cell(footerStart, 1).Style;
+        var hoursStyle = sheet.Cell(footerStart, 2).Style;
+        for (var row = footerStart; row < noteRow; row++)
+        {
+            sheet.Cell(row, 1).Clear(XLClearOptions.Contents);
+            sheet.Cell(row, 2).Clear(XLClearOptions.Contents);
+        }
+        for (var index = 0; index < shifts.Length; index++)
+        {
+            var definition = shifts[index]; var row = footerStart + index;
+            sheet.Cell(row, 1).Style = codeStyle;
+            sheet.Cell(row, 2).Style = hoursStyle;
+            sheet.Cell(row, 1).Value = definition.Code;
+            sheet.Cell(row, 2).Value = FormatLegendHours(definition);
+        }
+    }
+
+    private static string FormatLegendHours(AssignmentCodeDefinition definition) =>
+        definition.StartTime is { } start && definition.EndTime is { } end
+            ? $"{start:hh\\.mm} / {end:hh\\.mm}"
+            : string.Empty;
 
     private static void WriteGroupHeader(IXLWorksheet sheet, int row, string title)
     {

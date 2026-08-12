@@ -97,6 +97,8 @@ public sealed class WeeklyExcelExporter
             sheet.Cell(row, 1).Value = offset + index + 1;
             sheet.Cell(row, 2).Value = employee.FullName;
             sheet.Cell(row, 3).Value = employee.Position;
+            ClearFill(sheet.Cell(row, 2));
+            ClearFill(sheet.Cell(row, 3));
             foreach (var signatureColumn in SignatureColumns) sheet.Cell(row, signatureColumn).Clear(XLClearOptions.Contents);
             for (var day = 0; day < 7; day++)
                 if (!employee.IsEmployedOn(week[day])) AttendanceExcelStyle.BeforeHire(sheet.Cell(row, WorkTimeColumns[day]));
@@ -119,6 +121,13 @@ public sealed class WeeklyExcelExporter
                 AttendanceExcelStyle.Blackout(sheet.Cell(rows[pair.Key], WorkTimeColumns[day]));
 
         ExcelPageSetup.ApplyA4(sheet, "A1:S36", XLPageOrientation.Landscape);
+    }
+
+    private static void ClearFill(IXLCell cell)
+    {
+        cell.Style.Fill.PatternType = XLFillPatternValues.None;
+        cell.Style.Fill.BackgroundColor = XLColor.NoColor;
+        cell.Style.Fill.PatternColor = XLColor.NoColor;
     }
 
     private static IReadOnlyList<AssignmentCodeDefinition> LegacyDefinitions() => AttendanceCodes.All
