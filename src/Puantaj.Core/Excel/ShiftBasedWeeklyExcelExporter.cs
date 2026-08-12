@@ -97,7 +97,7 @@ public sealed class ShiftBasedWeeklyExcelExporter
         IReadOnlyList<AssignmentCodeDefinition> activeDefinitions)
     {
         sheet.Cell("C3").Value = hotelName; sheet.Cell("C4").Value = departmentName;
-        sheet.Cell("R4").Value = $"{monday:dd.MM.yyyy} - {monday.AddDays(6):dd.MM.yyyy}";
+        WeeklyPlanDateWriter.Write(sheet, monday);
         var footerStart = FindFooterStart(sheet);
         var usedDataRows = groups.Sum(group => group.Employees.Count + 1);
         var desiredFooterStart = FirstDataRow + usedDataRows + 1;
